@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+*.egg-info/
+.eggs/
+dist/
+*.egg
+
+# 后端
+backend/venv/
+backend/.env
+backend/*.db
+backend/k8s_dashboard.db
+backend/kubeconfigs/
+
+# Node / 前端
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 系统
+.DS_Store
+Thumbs.db
+
+# 日志与临时
+*.log
+*.tmp
+.cache/
