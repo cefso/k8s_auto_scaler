@@ -43,21 +43,20 @@ body {
 }
 
 .app {
-  min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .header {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 1rem 2rem;
   background: var(--bg-card);
   border-bottom: 1px solid var(--border);
-  position: sticky;
-  top: 0;
-  z-index: 100;
 }
 
 .logo {
@@ -102,7 +101,7 @@ body {
 .layout {
   flex: 1;
   display: flex;
-  min-height: calc(100vh - 60px);
+  overflow: hidden;
 }
 
 .sidebar {
