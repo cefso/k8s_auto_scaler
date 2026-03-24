@@ -36,7 +36,7 @@ cd backend
 python -m venv venv
 source venv/bin/activate   # Windows: venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8082
 ```
 
 ### 2. 前端
@@ -47,7 +47,7 @@ npm install
 npm run dev
 ```
 
-前端默认运行在 http://localhost:5173，API 代理到 http://localhost:8000。
+前端默认运行在 http://localhost:5173，API 代理到 http://localhost:8082。
 
 ### 3. 使用
 
@@ -180,7 +180,7 @@ k8s_auto_scaler/
 
 ## API 文档
 
-启动后端后访问 http://localhost:8000/docs 查看 Swagger API 文档。
+启动后端后访问 http://localhost:8082/docs 查看 Swagger API 文档。
 
 ## 安全说明
 
