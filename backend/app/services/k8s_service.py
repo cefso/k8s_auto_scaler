@@ -269,6 +269,7 @@ def list_ingresses(api_client, namespace: str | None = None) -> list[dict]:
             "namespace": ing.metadata.namespace,
             "hosts": _get_ingress_hosts(ing),
             "class_name": getattr(ing.spec, 'ingress_class_name', '-') if ing.spec else "-",
+            "tls": _get_ingress_tls(ing),
             "age": _get_age(ing.metadata.creation_timestamp),
         }
         for ing in ings.items
@@ -294,6 +295,17 @@ def _get_ingress_hosts(ing) -> str:
         return "-"
     hosts = [r.host for r in ing.spec.rules if r.host]
     return ", ".join(hosts) if hosts else "-"
+
+
+def _get_ingress_tls(ing) -> str:
+    """获取 Ingress 的 TLS secret 名称"""
+    if not ing.spec or not ing.spec.tls:
+        return "-"
+    secrets = []
+    for tls in ing.spec.tls:
+        if tls.secret_name:
+            secrets.append(tls.secret_name)
+    return ", ".join(secrets) if secrets else "-"
 
 
 def list_helm_releases(api_client, namespace: str | None = None) -> list[dict]:

@@ -149,7 +149,7 @@ const tableHeaders = computed(() => {
     rollouts: ['名称', '命名空间', '副本', '就绪', '状态', '年龄'],
     pods: ['名称', '命名空间', '状态', '就绪', '重启', '年龄', '节点'],
     services: ['名称', '命名空间', '类型', 'Cluster IP', '端口', '年龄'],
-    ingresses: ['名称', '命名空间', 'Hosts', 'Class', '年龄'],
+    ingresses: ['名称', '命名空间', 'Hosts', 'Class', 'TLS', '年龄'],
     apisixroutes: ['名称', '命名空间', 'Hosts', '年龄'],
     apisixtlses: ['名称', '命名空间', 'Hosts', 'Secret', '年龄'],
     configmaps: ['名称', '命名空间', 'Data Keys', '年龄'],
@@ -204,6 +204,7 @@ function rowData(item: any) {
         命名空间: item.namespace,
         Hosts: item.hosts || '-',
         Class: item.class_name || '-',
+        TLS: item.tls || '-',
         年龄: item.age,
       }
     case 'apisixroutes':
