@@ -149,7 +149,7 @@ const tabLabel = computed(() => tabs.find((t) => t.key === activeTab.value)?.lab
 
 const tableHeaders = computed(() => {
   const map: Record<string, string[]> = {
-    helm: ['名称', '命名空间', 'Revision', '状态', '年龄'],
+    helm: ['名称', '命名空间', 'Chart', 'App Version', 'Revision', '状态', '年龄'],
     deployments: ['名称', '命名空间', '副本', '就绪', '状态', '年龄'],
     statefulsets: ['名称', '命名空间', '副本', '就绪', '状态', '年龄'],
     rollouts: ['名称', '命名空间', '副本', '就绪', '状态', '年龄'],
@@ -173,6 +173,8 @@ function rowData(item: any) {
       return {
         名称: item.name,
         命名空间: item.namespace,
+        Chart: item.chart || '-',
+        'App Version': item.app_version || '-',
         Revision: item.revision,
         状态: item.status || 'deployed',
         年龄: item.age,

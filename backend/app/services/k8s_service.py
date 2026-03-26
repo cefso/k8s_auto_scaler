@@ -5,6 +5,8 @@ Kubernetes 集群服务
 - 封装各类资源（Deployment、Pod、Service 等）的列表与扩缩容操作
 - 支持 CRD：Argo Rollout、Apache APISIX Route/TLS、Helm Release
 """
+import base64
+import gzip
 import re
 import yaml
 from datetime import datetime, timezone
@@ -443,9 +445,13 @@ def _get_ingress_tls(ing) -> str:
 
 
 def list_helm_releases(api_client, namespace: str | None = None) -> list[dict]:
-    """列出 Helm 应用 (通过 Helm release Secrets)"""
+    """列出 Helm 应用 (通过解析 Helm release Secrets)"""
+    import logging
+    logger = logging.getLogger(__name__)
+
     v1 = client.CoreV1Api(api_client)
-    label_selector = "app.kubernetes.io/managed-by=Helm"
+    # Helm 3 使用 app.kubernetes.io/managed-by=Helm，部分旧版本使用 owner=helm
+    label_selector = "owner=helm"
     try:
         if namespace:
             secrets = v1.list_namespaced_secret(
@@ -456,32 +462,72 @@ def list_helm_releases(api_client, namespace: str | None = None) -> list[dict]:
             secrets = v1.list_secret_for_all_namespaces(
                 label_selector=label_selector,
             )
-    except ApiException:
+    except ApiException as e:
+        logger.warning(f"Failed to list secrets: {e}")
         return []
 
     # 解析 release 信息，同一 release 只保留最新 revision
     releases: dict[tuple[str, str], dict] = {}
+    helm_secret_count = 0
     for s in secrets.items:
-        if not s.metadata or s.type != "helm.sh/release.v1":
+        if not s.metadata:
             continue
+        secret_type = getattr(s, 'type', None)
+        if secret_type != "helm.sh/release.v1":
+            continue
+        helm_secret_count += 1
         ann = s.metadata.annotations or {}
-        release_name = ann.get("meta.helm.sh/release-name") or _parse_release_name(s.metadata.name)
+        release_name = ann.get("meta.helm.sh/release-name") or _parse_helm_release_name(s.metadata.name)
         ns = s.metadata.namespace or ann.get("meta.helm.sh/release-namespace", "")
         revision = _parse_helm_revision(s.metadata.name)
         key = (ns, release_name)
         if key not in releases or revision > releases[key].get("revision", 0):
+            release_info = _parse_helm_release_data(s.data.get("release") if s.data else None)
             releases[key] = {
                 "name": release_name,
                 "namespace": ns,
                 "revision": revision,
-                "status": "deployed",
+                "status": release_info.get("status", "deployed"),
+                "chart": release_info.get("chart", "-"),
+                "app_version": release_info.get("app_version", "-"),
                 "age": _get_age(s.metadata.creation_timestamp),
             }
 
+    logger.info(f"Found {helm_secret_count} helm secrets, parsed {len(releases)} releases")
     return sorted(releases.values(), key=lambda x: (x["namespace"], x["name"]))
 
 
-def _parse_release_name(secret_name: str) -> str:
+def _parse_helm_release_data(release_data: str | None) -> dict:
+    """解析 Helm release data 字段 (base64 + gzip + yaml)"""
+    import logging
+    logger = logging.getLogger(__name__)
+
+    if not release_data:
+        return {}
+    try:
+        # Helm 3: release data 是 base64 编码的 gzip 压缩 YAML
+        decoded = base64.b64decode(release_data)
+        decompressed = gzip.decompress(decoded)
+        release = yaml.safe_load(decompressed)
+        if not release:
+            return {}
+        info = release.get("info", {})
+        chart = release.get("chart", {})
+        chart_name = chart.get("metadata", {}).get("name", "") if chart else ""
+        chart_version = chart.get("metadata", {}).get("version", "") if chart else ""
+        return {
+            "status": release.get("status", ""),
+            "chart": f"{chart_name}-{chart_version}" if chart_name else "-",
+            "app_version": chart.get("metadata", {}).get("appVersion", "-") if chart else "-",
+            "first_deployed": info.get("first_deployed", ""),
+            "last_deployed": info.get("last_deployed", ""),
+        }
+    except Exception as e:
+        logger.warning(f"Helm release data parsing failed: {type(e).__name__}: {e}")
+        return {}
+
+
+def _parse_helm_release_name(secret_name: str) -> str:
     """从 secret 名解析 release 名: sh.helm.release.v1.<name>.v<rev>"""
     m = re.search(r"sh\.helm\.release\.v\d+\.(.+)\.v\d+$", secret_name)
     return m.group(1) if m else secret_name
