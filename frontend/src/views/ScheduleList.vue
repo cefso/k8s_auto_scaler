@@ -2,6 +2,7 @@
   <div>
     <div class="page-header">
       <h1 class="page-title">定时扩缩容</h1>
+      <button class="btn btn-secondary" @click="loadAll">刷新</button>
       <button class="btn btn-primary" @click="showAddModal = true">新建任务</button>
     </div>
 
@@ -155,6 +156,10 @@ async function loadClusters() {
   clusters.value = res.data
 }
 
+async function loadAll() {
+  await Promise.all([loadSchedules(), loadClusters()])
+}
+
 function editSchedule(s: ScalingSchedule) {
   editingId.value = s.id
   form.value = {
@@ -222,8 +227,7 @@ async function deleteSchedule(s: ScalingSchedule) {
 }
 
 onMounted(() => {
-  loadClusters()
-  loadSchedules()
+  loadAll()
 })
 </script>
 

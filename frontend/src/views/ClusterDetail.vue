@@ -6,15 +6,18 @@
     <template v-else-if="cluster">
       <div class="page-header">
         <h1 class="page-title">{{ cluster.display_name || cluster.name }}</h1>
-        <select
-          v-if="hasNamespaceFilter"
-          v-model="filterNs"
-          class="form-control ns-filter"
-          @change="loadResource"
-        >
-          <option value="">全部命名空间</option>
-          <option v-for="ns in namespaces" :key="ns.name" :value="ns.name">{{ ns.name }}</option>
-        </select>
+        <div class="page-header-actions">
+          <select
+            v-if="hasNamespaceFilter"
+            v-model="filterNs"
+            class="form-control ns-filter"
+            @change="loadResource"
+          >
+            <option value="">全部命名空间</option>
+            <option v-for="ns in namespaces" :key="ns.name" :value="ns.name">{{ ns.name }}</option>
+          </select>
+          <button class="btn btn-secondary" @click="refreshAll">刷新</button>
+        </div>
       </div>
 
       <div class="card">
@@ -310,6 +313,10 @@ async function loadResource() {
   }
 }
 
+async function refreshAll() {
+  await Promise.all([loadResource(), loadNamespaces()])
+}
+
 async function openYamlModal(item: any) {
   yamlModal.value = { namespace: item.namespace, name: item.name }
   yamlContent.value = ''
@@ -374,6 +381,11 @@ onMounted(loadCluster)
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1.5rem;
+}
+.page-header-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
 }
 .card-title {
   font-weight: 500;

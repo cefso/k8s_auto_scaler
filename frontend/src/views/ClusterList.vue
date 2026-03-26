@@ -2,6 +2,7 @@
   <div>
     <div class="page-header">
       <h1 class="page-title">集群管理</h1>
+      <button class="btn btn-secondary" @click="loadClusters">刷新</button>
       <button class="btn btn-primary" @click="showAddModal = true">
         添加集群
       </button>
