@@ -22,6 +22,10 @@ class ClusterUpdate(BaseModel):
     is_active: bool | None = None
 
 
+class ClusterKubeconfigUpdate(BaseModel):
+    kubeconfig_content: str  # 新的 kubeconfig 内容
+
+
 class ClusterResponse(ClusterBase):
     id: int
     is_active: bool

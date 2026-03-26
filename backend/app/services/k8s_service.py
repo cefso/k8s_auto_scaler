@@ -5,9 +5,11 @@ Kubernetes 集群服务
 - 封装各类资源（Deployment、Pod、Service 等）的列表与扩缩容操作
 - 支持 CRD：Argo Rollout、Apache APISIX Route/TLS、Helm Release
 """
-import base64
-import gzip
+import json
+import os
 import re
+import subprocess
+import tempfile
 import yaml
 from datetime import datetime, timezone
 from kubernetes import client, config
@@ -33,6 +35,11 @@ def get_api_client_for_cluster(cluster: Cluster):
     """根据 Cluster 模型解密 kubeconfig 并返回该集群的 K8s ApiClient。"""
     content = decrypt_kubeconfig(cluster.kubeconfig_encrypted)
     return load_k8s_client_from_content(content)
+
+
+def get_kubeconfig_content_for_cluster(cluster: Cluster) -> str:
+    """解密并返回集群的 kubeconfig 内容。"""
+    return decrypt_kubeconfig(cluster.kubeconfig_encrypted)
 
 
 async def get_cluster_by_id(db: AsyncSession, cluster_id: int) -> Cluster | None:
@@ -444,99 +451,174 @@ def _get_ingress_tls(ing) -> str:
     return ", ".join(secrets) if secrets else "-"
 
 
-def list_helm_releases(api_client, namespace: str | None = None) -> list[dict]:
-    """列出 Helm 应用 (通过解析 Helm release Secrets)"""
+def list_helm_releases(kubeconfig_content: str, namespace: str | None = None) -> dict:
+    """列出 Helm 应用 (通过 helm list 命令)
+
+    返回格式:
+    - helm_available=True: {"items": [...], "helm_available": True, "error": None}
+    - helm_available=False: {"items": [], "helm_available": False, "error": "helm 未安装或下载失败"}
+    """
     import logging
     logger = logging.getLogger(__name__)
 
-    v1 = client.CoreV1Api(api_client)
-    # Helm 3 使用 app.kubernetes.io/managed-by=Helm，部分旧版本使用 owner=helm
-    label_selector = "owner=helm"
+    helm_path = _ensure_helm()
+    if not helm_path:
+        logger.warning("helm not available")
+        return {"items": [], "helm_available": False, "error": "helm 未安装或下载失败，请确保 helm CLI 已安装并可访问"}
+
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.kubeconfig', delete=False) as f:
+        f.write(kubeconfig_content)
+        kubeconfig_path = f.name
+
     try:
+        cmd = [helm_path, "list", "-A", "-o", "json"]
         if namespace:
-            secrets = v1.list_namespaced_secret(
-                namespace=namespace,
-                label_selector=label_selector,
-            )
-        else:
-            secrets = v1.list_secret_for_all_namespaces(
-                label_selector=label_selector,
-            )
-    except ApiException as e:
-        logger.warning(f"Failed to list secrets: {e}")
-        return []
-
-    # 解析 release 信息，同一 release 只保留最新 revision
-    releases: dict[tuple[str, str], dict] = {}
-    helm_secret_count = 0
-    for s in secrets.items:
-        if not s.metadata:
-            continue
-        secret_type = getattr(s, 'type', None)
-        if secret_type != "helm.sh/release.v1":
-            continue
-        helm_secret_count += 1
-        ann = s.metadata.annotations or {}
-        release_name = ann.get("meta.helm.sh/release-name") or _parse_helm_release_name(s.metadata.name)
-        ns = s.metadata.namespace or ann.get("meta.helm.sh/release-namespace", "")
-        revision = _parse_helm_revision(s.metadata.name)
-        key = (ns, release_name)
-        if key not in releases or revision > releases[key].get("revision", 0):
-            release_info = _parse_helm_release_data(s.data.get("release") if s.data else None)
-            releases[key] = {
-                "name": release_name,
-                "namespace": ns,
-                "revision": revision,
-                "status": release_info.get("status", "deployed"),
-                "chart": release_info.get("chart", "-"),
-                "app_version": release_info.get("app_version", "-"),
-                "age": _get_age(s.metadata.creation_timestamp),
-            }
-
-    logger.info(f"Found {helm_secret_count} helm secrets, parsed {len(releases)} releases")
-    return sorted(releases.values(), key=lambda x: (x["namespace"], x["name"]))
+            cmd = [helm_path, "list", "-n", namespace, "-o", "json"]
+        env = os.environ.copy()
+        env["KUBECONFIG"] = kubeconfig_path
+        result = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=30)
+        if result.returncode != 0:
+            logger.warning(f"helm list failed: {result.stderr}")
+            return {"items": [], "helm_available": True, "error": None}
+        releases = json.loads(result.stdout)
+        out = []
+        for r in releases:
+            last_deployed = r.get("last_deployed", "")
+            age = _parse_helm_age(last_deployed) if last_deployed else "-"
+            out.append({
+                "name": r.get("name", ""),
+                "namespace": r.get("namespace", ""),
+                "revision": r.get("revision", ""),
+                "status": r.get("status", ""),
+                "chart": r.get("chart", ""),
+                "app_version": r.get("app_version", ""),
+                "age": age,
+            })
+        return {"items": out, "helm_available": True, "error": None}
+    except (json.JSONDecodeError, subprocess.TimeoutExpired, FileNotFoundError) as e:
+        logger.warning(f"helm list error: {e}")
+        return {"items": [], "helm_available": True, "error": None}
+    finally:
+        os.unlink(kubeconfig_path)
 
 
-def _parse_helm_release_data(release_data: str | None) -> dict:
-    """解析 Helm release data 字段 (base64 + gzip + yaml)"""
+def _ensure_helm() -> str | None:
+    """检测或安装 helm CLI，返回 helm 路径"""
     import logging
     logger = logging.getLogger(__name__)
 
-    if not release_data:
-        return {}
+    # 1. 检查 PATH 中是否已有 helm
+    helm_in_path = _find_helm_in_path()
+    if helm_in_path:
+        return helm_in_path
+
+    # 2. 检查 ~/.local/bin/helm 或项目内的 helm
+    local_helm = os.path.expanduser("~/.local/bin/helm")
+    if os.path.isfile(local_helm) and os.access(local_helm, os.X_OK):
+        return local_helm
+
+    # 3. 自动下载 helm
+    helm_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "bin")
+    os.makedirs(helm_dir, exist_ok=True)
+    helm_path = os.path.join(helm_dir, "helm")
+
+    if os.path.isfile(helm_path) and os.access(helm_path, os.X_OK):
+        return helm_path
+
+    logger.info("helm not found, attempting to download...")
+
+    # 检测平台
+    platform = _get_platform()
+    if not platform:
+        logger.error(" unsupported platform for helm download")
+        return None
+
+    url = f"https://get.helm.sh/helm-{_HELM_VERSION}-{platform}.tar.gz"
+
     try:
-        # Helm 3: release data 是 base64 编码的 gzip 压缩 YAML
-        decoded = base64.b64decode(release_data)
-        decompressed = gzip.decompress(decoded)
-        release = yaml.safe_load(decompressed)
-        if not release:
-            return {}
-        info = release.get("info", {})
-        chart = release.get("chart", {})
-        chart_name = chart.get("metadata", {}).get("name", "") if chart else ""
-        chart_version = chart.get("metadata", {}).get("version", "") if chart else ""
-        return {
-            "status": release.get("status", ""),
-            "chart": f"{chart_name}-{chart_version}" if chart_name else "-",
-            "app_version": chart.get("metadata", {}).get("appVersion", "-") if chart else "-",
-            "first_deployed": info.get("first_deployed", ""),
-            "last_deployed": info.get("last_deployed", ""),
-        }
+        import urllib.request
+        import tarfile
+        import zipfile  # noqa: F401
+
+        # 下载
+        tar_path = tempfile.mktemp(suffix=".tar.gz")
+        urllib.request.urlretrieve(url, tar_path)
+
+        # 解压
+        with tarfile.open(tar_path, "r:gz") as tar:
+            for member in tar.getmembers():
+                if member.name.endswith("/helm") or member.name == "helm":
+                    member.name = "helm"
+                    tar.extract(member, helm_dir)
+
+        os.unlink(tar_path)
+        os.chmod(helm_path, 0o755)
+        logger.info(f"helm installed to {helm_path}")
+        return helm_path
     except Exception as e:
-        logger.warning(f"Helm release data parsing failed: {type(e).__name__}: {e}")
-        return {}
+        logger.error(f"failed to download helm: {e}")
+        # 清理失败的文件
+        if os.path.exists(helm_path):
+            os.remove(helm_path)
+        return None
 
 
-def _parse_helm_release_name(secret_name: str) -> str:
-    """从 secret 名解析 release 名: sh.helm.release.v1.<name>.v<rev>"""
-    m = re.search(r"sh\.helm\.release\.v\d+\.(.+)\.v\d+$", secret_name)
-    return m.group(1) if m else secret_name
+def _find_helm_in_path() -> str | None:
+    """在 PATH 中查找 helm"""
+    for dir in os.environ.get("PATH", "").split(os.pathsep):
+        path = os.path.join(dir, "helm")
+        if os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    return None
 
 
-def _parse_helm_revision(secret_name: str) -> int:
-    """解析 revision 数字"""
-    m = re.search(r"\.v(\d+)$", secret_name)
-    return int(m.group(1)) if m else 0
+def _get_platform() -> str | None:
+    """获取当前平台的 helm 下载标识"""
+    import platform
+    system = platform.system().lower()
+    machine = platform.machine().lower()
+
+    # Linux
+    if system == "linux":
+        if machine == "x86_64":
+            return "linux-amd64"
+        elif machine == "aarch64" or machine == "arm64":
+            return "linux-arm64"
+    # macOS
+    elif system == "darwin":
+        if machine == "x86_64":
+            return "darwin-amd64"
+        elif machine == "aarch64" or machine == "arm64":
+            return "darwin-arm64"
+    return None
+
+
+_HELM_VERSION = "v3.16.3"
+
+
+def _parse_helm_age(last_deployed: str) -> str:
+    """解析 helm last_deployed 时间戳为年龄字符串"""
+    if not last_deployed:
+        return "-"
+    try:
+        # helm 输出格式: "2024-01-15 10:30:00.000000000 +0800 CST"
+        dt = datetime.strptime(last_deployed.split(".")[0], "%Y-%m-%d %H:%M:%S")
+        dt = dt.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        delta = now - dt
+        days = delta.days
+        hours, remainder = divmod(delta.seconds, 3600)
+        minutes, _ = divmod(remainder, 60)
+        if days > 0:
+            return f"{days}d"
+        elif hours > 0:
+            return f"{hours}h"
+        elif minutes > 0:
+            return f"{minutes}m"
+        else:
+            return "<1m"
+    except (ValueError, TypeError):
+        return "-"
 
 
 def list_configmaps(api_client, namespace: str | None = None) -> list[dict]:

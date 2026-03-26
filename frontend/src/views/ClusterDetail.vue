@@ -26,6 +26,7 @@
         </div>
         <div class="card-body">
           <div v-if="resourceLoading" class="empty-state">加载中...</div>
+          <div v-else-if="helmError" class="empty-state" style="color: var(--warning)">{{ helmError }}</div>
           <div v-else-if="!items.length" class="empty-state">暂无数据</div>
           <div v-else class="table-wrap">
             <table>
@@ -144,6 +145,7 @@ const scaleLoading = ref(false)
 const yamlModal = ref<{ namespace: string; name: string } | null>(null)
 const yamlContent = ref('')
 const yamlLoading = ref(false)
+const helmError = ref('')
 
 const tabLabel = computed(() => tabs.find((t) => t.key === activeTab.value)?.label || '')
 
@@ -319,6 +321,7 @@ async function loadResource() {
       res = await resourceApi.rollouts(clusterId.value, filterNs.value || undefined)
     } else if (activeTab.value === 'helm') {
       res = await resourceApi.helm(clusterId.value, filterNs.value || undefined)
+      helmError.value = res.data.helm_available === false ? (res.data.error || 'helm 未安装') : ''
     } else if (activeTab.value === 'pods') {
       res = await resourceApi.pods(clusterId.value, filterNs.value || undefined)
     } else if (activeTab.value === 'services') {
@@ -403,6 +406,7 @@ async function doScale() {
 
 watch(activeTab, () => {
   filterNs.value = ''
+  helmError.value = ''
   if (connectionOk.value) loadResource()
 }, { immediate: true })
 

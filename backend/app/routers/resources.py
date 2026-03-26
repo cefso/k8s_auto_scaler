@@ -11,6 +11,7 @@ from app.database import get_db
 from app.models import Cluster
 from app.services.k8s_service import (
     get_api_client_for_cluster,
+    get_kubeconfig_content_for_cluster,
     get_resource_yaml,
     list_namespaces,
     list_deployments,
@@ -189,9 +190,16 @@ async def get_helm_releases(
 ):
     """获取 Helm 应用列表"""
     cluster = await _get_cluster(db, cluster_id)
-    api_client = get_api_client_for_cluster(cluster)
-    items = list_helm_releases(api_client, namespace)
-    return {"cluster_id": cluster_id, "resource_type": "Helm", "items": items, "total": len(items)}
+    kubeconfig_content = get_kubeconfig_content_for_cluster(cluster)
+    result = list_helm_releases(kubeconfig_content, namespace)
+    return {
+        "cluster_id": cluster_id,
+        "resource_type": "Helm",
+        "items": result["items"],
+        "total": len(result["items"]),
+        "helm_available": result["helm_available"],
+        "error": result["error"],
+    }
 
 
 @router.get("/{cluster_id}/pods")

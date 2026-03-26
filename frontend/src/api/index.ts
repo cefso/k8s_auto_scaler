@@ -41,6 +41,8 @@ export const clusterApi = {
   get: (id: number) => api.get<Cluster>(`/clusters/${id}`),
   update: (id: number, data: { display_name?: string; is_active?: boolean }) =>
     api.put<Cluster>(`/clusters/${id}`, data),
+  updateKubeconfig: (id: number, kubeconfig_content: string) =>
+    api.put<Cluster>(`/clusters/${id}/kubeconfig`, { kubeconfig_content }),
   delete: (id: number) => api.delete(`/clusters/${id}`),
   test: (id: number) => api.get(`/clusters/${id}/test`),
 }

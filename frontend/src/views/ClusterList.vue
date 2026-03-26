@@ -33,6 +33,7 @@
               <td>
                 <div class="action-buttons">
                   <button class="btn btn-sm btn-secondary" @click="testConnection(c)">测试连接</button>
+                  <button class="btn btn-sm btn-secondary" @click="openUpdateKubeconfigModal(c)">更新Kubeconfig</button>
                   <router-link :to="`/cluster/${c.id}`" class="btn btn-sm btn-primary">查看</router-link>
                   <button class="btn btn-sm btn-danger" @click="confirmDelete(c)">删除</button>
                 </div>
@@ -78,6 +79,28 @@
         </form>
       </div>
     </div>
+
+    <!-- 更新Kubeconfig弹窗 -->
+    <div v-if="showUpdateKubeconfigModal" class="modal-overlay" @click.self="showUpdateKubeconfigModal = false">
+      <div class="modal">
+        <h2>更新 Kubeconfig - {{ updateKubeconfigCluster?.display_name || updateKubeconfigCluster?.name }}</h2>
+        <form @submit.prevent="updateKubeconfig">
+          <div class="form-group">
+            <label>新的 Kubeconfig 内容 *</label>
+            <textarea
+              v-model="updateKubeconfigForm.kubeconfig_content"
+              class="form-control"
+              placeholder="粘贴新的 kubeconfig 文件内容 (YAML)"
+              required
+            ></textarea>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" @click="showUpdateKubeconfigModal = false">取消</button>
+            <button type="submit" class="btn btn-primary" :disabled="updateLoading">更新</button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -95,6 +118,34 @@ const form = ref({
   display_name: '',
   kubeconfig_content: '',
 })
+
+// 更新 kubeconfig 相关
+const showUpdateKubeconfigModal = ref(false)
+const updateKubeconfigCluster = ref<Cluster | null>(null)
+const updateKubeconfigForm = ref({ kubeconfig_content: '' })
+const updateLoading = ref(false)
+
+function openUpdateKubeconfigModal(c: Cluster) {
+  updateKubeconfigCluster.value = c
+  updateKubeconfigForm.value.kubeconfig_content = ''
+  showUpdateKubeconfigModal.value = true
+}
+
+async function updateKubeconfig() {
+  if (!updateKubeconfigCluster.value) return
+  updateLoading.value = true
+  try {
+    await clusterApi.updateKubeconfig(updateKubeconfigCluster.value.id, updateKubeconfigForm.value.kubeconfig_content)
+    showUpdateKubeconfigModal.value = false
+    updateKubeconfigCluster.value = null
+    updateKubeconfigForm.value.kubeconfig_content = ''
+    loadClusters()
+  } catch (e: any) {
+    alert(e.response?.data?.detail || '更新 kubeconfig 失败')
+  } finally {
+    updateLoading.value = false
+  }
+}
 
 async function loadClusters() {
   await clusterStore.fetchClusters()

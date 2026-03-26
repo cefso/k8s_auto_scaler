@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.database import get_db
 from app.models import Cluster
-from app.schemas import ClusterCreate, ClusterUpdate, ClusterResponse
+from app.schemas import ClusterCreate, ClusterUpdate, ClusterKubeconfigUpdate, ClusterResponse
 from app.crypto_utils import encrypt_kubeconfig
 from app.services.k8s_service import get_api_client_for_cluster
 
@@ -65,12 +65,36 @@ async def update_cluster(
     cluster = result.scalar_one_or_none()
     if not cluster:
         raise HTTPException(status_code=404, detail="集群不存在")
-    
+
     if data.display_name is not None:
         cluster.display_name = data.display_name
     if data.is_active is not None:
         cluster.is_active = data.is_active
-    
+
+    await db.commit()
+    await db.refresh(cluster)
+    return cluster
+
+
+@router.put("/{cluster_id}/kubeconfig", response_model=ClusterResponse)
+async def update_cluster_kubeconfig(
+    cluster_id: int, data: ClusterKubeconfigUpdate, db: AsyncSession = Depends(get_db)
+):
+    """更新集群的 kubeconfig"""
+    result = await db.execute(select(Cluster).where(Cluster.id == cluster_id))
+    cluster = result.scalar_one_or_none()
+    if not cluster:
+        raise HTTPException(status_code=404, detail="集群不存在")
+
+    # 验证新的 kubeconfig 是否有效
+    try:
+        from app.services.k8s_service import load_k8s_client_from_content
+        load_k8s_client_from_content(data.kubeconfig_content)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"kubeconfig 无效: {str(e)}")
+
+    # 加密并保存新的 kubeconfig
+    cluster.kubeconfig_encrypted = encrypt_kubeconfig(data.kubeconfig_content)
     await db.commit()
     await db.refresh(cluster)
     return cluster
