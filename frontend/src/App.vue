@@ -66,6 +66,34 @@
           </nav>
         </section>
         <section v-if="currentClusterId && onClusterPage" class="sidebar-section">
+          <h3 class="sidebar-title">Apisix</h3>
+          <nav class="sidebar-nav">
+            <router-link
+              v-for="r in apisixTypes"
+              :key="r.key"
+              :to="`/cluster/${currentClusterId}?tab=${r.key}`"
+              :class="['sidebar-item', { active: currentTab === r.key }]"
+            >
+              <span class="sidebar-icon">▪</span>
+              {{ r.label }}
+            </router-link>
+          </nav>
+        </section>
+        <section v-if="currentClusterId && onClusterPage" class="sidebar-section">
+          <h3 class="sidebar-title">Traefik</h3>
+          <nav class="sidebar-nav">
+            <router-link
+              v-for="r in traefikTypes"
+              :key="r.key"
+              :to="`/cluster/${currentClusterId}?tab=${r.key}`"
+              :class="['sidebar-item', { active: currentTab === r.key }]"
+            >
+              <span class="sidebar-icon">▪</span>
+              {{ r.label }}
+            </router-link>
+          </nav>
+        </section>
+        <section v-if="currentClusterId && onClusterPage" class="sidebar-section">
           <h3 class="sidebar-title">配置管理</h3>
           <nav class="sidebar-nav">
             <router-link
@@ -140,8 +168,17 @@ const resourceTypes = [
 const networkTypes = [
   { key: 'services', label: 'Service' },
   { key: 'ingresses', label: 'Ingress' },
+]
+
+const apisixTypes = [
   { key: 'apisixroutes', label: 'ApisixRoute' },
   { key: 'apisixtlses', label: 'ApisixTls' },
+]
+
+const traefikTypes = [
+  { key: 'ingressroutes', label: 'IngressRoute' },
+  { key: 'ingressroutetcps', label: 'IngressRouteTCP' },
+  { key: 'ingressrouteudps', label: 'IngressRouteUDP' },
 ]
 
 const configTypes = [

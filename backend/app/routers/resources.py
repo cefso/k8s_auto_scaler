@@ -24,6 +24,9 @@ from app.services.k8s_service import (
     list_helm_releases,
     list_configmaps,
     list_secrets,
+    list_traefikingresses,
+    list_traefikingresstcps,
+    list_traefikingressudps,
 )
 
 router = APIRouter(prefix="/api/resources", tags=["resources"])
@@ -137,6 +140,45 @@ async def get_apisixtlses(
     api_client = get_api_client_for_cluster(cluster)
     items = list_apisixtlses(api_client, namespace)
     return {"cluster_id": cluster_id, "resource_type": "ApisixTls", "items": items, "total": len(items)}
+
+
+@router.get("/{cluster_id}/ingressroutes")
+async def get_traefik_ingress_routes(
+    cluster_id: int,
+    namespace: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取 Traefik IngressRoute 列表"""
+    cluster = await _get_cluster(db, cluster_id)
+    api_client = get_api_client_for_cluster(cluster)
+    items = list_traefikingresses(api_client, namespace)
+    return {"cluster_id": cluster_id, "resource_type": "IngressRoute", "items": items, "total": len(items)}
+
+
+@router.get("/{cluster_id}/ingressroutetcps")
+async def get_traefik_ingress_route_tcps(
+    cluster_id: int,
+    namespace: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取 Traefik IngressRouteTCP 列表"""
+    cluster = await _get_cluster(db, cluster_id)
+    api_client = get_api_client_for_cluster(cluster)
+    items = list_traefikingresstcps(api_client, namespace)
+    return {"cluster_id": cluster_id, "resource_type": "IngressRouteTCP", "items": items, "total": len(items)}
+
+
+@router.get("/{cluster_id}/ingressrouteudps")
+async def get_traefik_ingress_route_udps(
+    cluster_id: int,
+    namespace: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取 Traefik IngressRouteUDP 列表"""
+    cluster = await _get_cluster(db, cluster_id)
+    api_client = get_api_client_for_cluster(cluster)
+    items = list_traefikingressudps(api_client, namespace)
+    return {"cluster_id": cluster_id, "resource_type": "IngressRouteUDP", "items": items, "total": len(items)}
 
 
 @router.get("/{cluster_id}/helm")

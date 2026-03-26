@@ -53,6 +53,12 @@ export const resourceApi = {
     api.get(`/resources/${clusterId}/statefulsets`, { params: { namespace } }),
   rollouts: (clusterId: number, namespace?: string) =>
     api.get(`/resources/${clusterId}/rollouts`, { params: { namespace } }),
+  ingressroutes: (clusterId: number, namespace?: string) =>
+    api.get(`/resources/${clusterId}/ingressroutes`, { params: { namespace } }),
+  ingressroutetcps: (clusterId: number, namespace?: string) =>
+    api.get(`/resources/${clusterId}/ingressroutetcps`, { params: { namespace } }),
+  ingressrouteudps: (clusterId: number, namespace?: string) =>
+    api.get(`/resources/${clusterId}/ingressrouteudps`, { params: { namespace } }),
   pods: (clusterId: number, namespace?: string) =>
     api.get(`/resources/${clusterId}/pods`, { params: { namespace } }),
   services: (clusterId: number, namespace?: string) =>
@@ -79,6 +85,9 @@ export const resourceApi = {
         ingresses: 'ingress',
         apisixroutes: 'apisixroute',
         apisixtlses: 'apisixtls',
+        ingressroutes: 'ingressroute',
+        ingressroutetcps: 'ingressroutetcp',
+        ingressrouteudps: 'ingressrouteudp',
         configmaps: 'configmap',
         secrets: 'secret',
       }

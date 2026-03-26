@@ -256,6 +256,140 @@ def _get_apisix_route_hosts(spec: dict) -> str:
     return ", ".join(hosts) if hosts else "-"
 
 
+def list_traefikingresses(api_client, namespace: str | None = None) -> list[dict]:
+    """列出 Traefik IngressRoute 资源"""
+    custom_api = client.CustomObjectsApi(api_client)
+    try:
+        if namespace:
+            result = custom_api.list_namespaced_custom_object(
+                group="traefik.io",
+                version="v1alpha1",
+                namespace=namespace,
+                plural="ingressroutes",
+            )
+        else:
+            result = custom_api.list_cluster_custom_object(
+                group="traefik.io",
+                version="v1alpha1",
+                plural="ingressroutes",
+            )
+    except ApiException as e:
+        if e.status == 404:
+            return []
+        raise
+
+    items = result.get("items", [])
+    out = []
+    for r in items:
+        meta = r.get("metadata", {})
+        spec = r.get("spec", {})
+        ns = meta.get("namespace", "")
+        name = meta.get("name", "")
+        hosts = _get_traefik_hosts(spec)
+        entry_points = ", ".join(spec.get("entryPoints", [])) if spec.get("entryPoints") else "-"
+        created = meta.get("creationTimestamp")
+        out.append({
+            "name": name,
+            "namespace": ns,
+            "hosts": hosts,
+            "entry_points": entry_points,
+            "age": _get_age(created) if created else "-",
+        })
+    return out
+
+
+def list_traefikingresstcps(api_client, namespace: str | None = None) -> list[dict]:
+    """列出 Traefik IngressRouteTCP 资源"""
+    custom_api = client.CustomObjectsApi(api_client)
+    try:
+        if namespace:
+            result = custom_api.list_namespaced_custom_object(
+                group="traefik.io",
+                version="v1alpha1",
+                namespace=namespace,
+                plural="ingressroutetcps",
+            )
+        else:
+            result = custom_api.list_cluster_custom_object(
+                group="traefik.io",
+                version="v1alpha1",
+                plural="ingressroutetcps",
+            )
+    except ApiException as e:
+        if e.status == 404:
+            return []
+        raise
+
+    items = result.get("items", [])
+    out = []
+    for r in items:
+        meta = r.get("metadata", {})
+        spec = r.get("spec", {})
+        ns = meta.get("namespace", "")
+        name = meta.get("name", "")
+        entry_points = ", ".join(spec.get("entryPoints", [])) if spec.get("entryPoints") else "-"
+        created = meta.get("creationTimestamp")
+        out.append({
+            "name": name,
+            "namespace": ns,
+            "entry_points": entry_points,
+            "age": _get_age(created) if created else "-",
+        })
+    return out
+
+
+def list_traefikingressudps(api_client, namespace: str | None = None) -> list[dict]:
+    """列出 Traefik IngressRouteUDP 资源"""
+    custom_api = client.CustomObjectsApi(api_client)
+    try:
+        if namespace:
+            result = custom_api.list_namespaced_custom_object(
+                group="traefik.io",
+                version="v1alpha1",
+                namespace=namespace,
+                plural="ingressrouteudps",
+            )
+        else:
+            result = custom_api.list_cluster_custom_object(
+                group="traefik.io",
+                version="v1alpha1",
+                plural="ingressrouteudps",
+            )
+    except ApiException as e:
+        if e.status == 404:
+            return []
+        raise
+
+    items = result.get("items", [])
+    out = []
+    for r in items:
+        meta = r.get("metadata", {})
+        spec = r.get("spec", {})
+        ns = meta.get("namespace", "")
+        name = meta.get("name", "")
+        entry_points = ", ".join(spec.get("entryPoints", [])) if spec.get("entryPoints") else "-"
+        created = meta.get("creationTimestamp")
+        out.append({
+            "name": name,
+            "namespace": ns,
+            "entry_points": entry_points,
+            "age": _get_age(created) if created else "-",
+        })
+    return out
+
+
+def _get_traefik_hosts(spec: dict) -> str:
+    """从 Traefik IngressRoute spec 提取 hosts"""
+    routes = spec.get("routes", [])
+    hosts = set()
+    for route in routes:
+        match = route.get("match", "")
+        m = re.search(r"Host\(`([^`]+)`\)", match)
+        if m:
+            hosts.add(m.group(1))
+    return ", ".join(hosts) if hosts else "-"
+
+
 def list_ingresses(api_client, namespace: str | None = None) -> list[dict]:
     """列出 Ingresses"""
     net_v1 = client.NetworkingV1Api(api_client)
@@ -556,6 +690,36 @@ def get_resource_yaml(api_client, resource_type: str, namespace: str, name: str)
             version="v2",
             namespace=namespace,
             plural="apisixtlses",
+            name=name,
+        )
+        return yaml.dump(body, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    elif rt == "ingressroute":
+        custom_api = client.CustomObjectsApi(api_client)
+        body = custom_api.get_namespaced_custom_object(
+            group="traefik.io",
+            version="v1alpha1",
+            namespace=namespace,
+            plural="ingressroutes",
+            name=name,
+        )
+        return yaml.dump(body, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    elif rt == "ingressroutetcp":
+        custom_api = client.CustomObjectsApi(api_client)
+        body = custom_api.get_namespaced_custom_object(
+            group="traefik.io",
+            version="v1alpha1",
+            namespace=namespace,
+            plural="ingressroutetcps",
+            name=name,
+        )
+        return yaml.dump(body, default_flow_style=False, allow_unicode=True, sort_keys=False)
+    elif rt == "ingressrouteudp":
+        custom_api = client.CustomObjectsApi(api_client)
+        body = custom_api.get_namespaced_custom_object(
+            group="traefik.io",
+            version="v1alpha1",
+            namespace=namespace,
+            plural="ingressrouteudps",
             name=name,
         )
         return yaml.dump(body, default_flow_style=False, allow_unicode=True, sort_keys=False)

@@ -111,6 +111,9 @@ const tabs = [
   { key: 'pods', label: 'Pod' },
   { key: 'services', label: 'Service' },
   { key: 'ingresses', label: 'Ingress' },
+  { key: 'ingressroutes', label: 'IngressRoute' },
+  { key: 'ingressroutetcps', label: 'IngressRouteTCP' },
+  { key: 'ingressrouteudps', label: 'IngressRouteUDP' },
   { key: 'apisixroutes', label: 'ApisixRoute' },
   { key: 'apisixtlses', label: 'ApisixTls' },
   { key: 'configmaps', label: 'ConfigMap' },
@@ -123,7 +126,7 @@ const activeTab = computed(() => {
 })
 
 const hasNamespaceFilter = computed(() =>
-  ['helm', 'deployments', 'statefulsets', 'rollouts', 'pods', 'services', 'ingresses', 'apisixroutes', 'apisixtlses', 'configmaps', 'secrets'].includes(activeTab.value)
+  ['helm', 'deployments', 'statefulsets', 'rollouts', 'pods', 'services', 'ingresses', 'ingressroutes', 'ingressroutetcps', 'ingressrouteudps', 'apisixroutes', 'apisixtlses', 'configmaps', 'secrets'].includes(activeTab.value)
 )
 
 const hasYaml = computed(() => activeTab.value !== 'helm')
@@ -153,6 +156,9 @@ const tableHeaders = computed(() => {
     pods: ['名称', '命名空间', '状态', '就绪', '重启', '年龄', '节点'],
     services: ['名称', '命名空间', '类型', 'Cluster IP', '端口', '年龄'],
     ingresses: ['名称', '命名空间', 'Hosts', 'Class', 'TLS', '年龄'],
+    ingressroutes: ['名称', '命名空间', 'Hosts', 'EntryPoints', '年龄'],
+    ingressroutetcps: ['名称', '命名空间', 'EntryPoints', '年龄'],
+    ingressrouteudps: ['名称', '命名空间', 'EntryPoints', '年龄'],
     apisixroutes: ['名称', '命名空间', 'Hosts', '年龄'],
     apisixtlses: ['名称', '命名空间', 'Hosts', 'Secret', '年龄'],
     configmaps: ['名称', '命名空间', 'Data Keys', '年龄'],
@@ -208,6 +214,28 @@ function rowData(item: any) {
         Hosts: item.hosts || '-',
         Class: item.class_name || '-',
         TLS: item.tls || '-',
+        年龄: item.age,
+      }
+    case 'ingressroutes':
+      return {
+        名称: item.name,
+        命名空间: item.namespace,
+        Hosts: item.hosts || '-',
+        EntryPoints: item.entry_points || '-',
+        年龄: item.age,
+      }
+    case 'ingressroutetcps':
+      return {
+        名称: item.name,
+        命名空间: item.namespace,
+        EntryPoints: item.entry_points || '-',
+        年龄: item.age,
+      }
+    case 'ingressrouteudps':
+      return {
+        名称: item.name,
+        命名空间: item.namespace,
+        EntryPoints: item.entry_points || '-',
         年龄: item.age,
       }
     case 'apisixroutes':
@@ -295,6 +323,12 @@ async function loadResource() {
       res = await resourceApi.services(clusterId.value, filterNs.value || undefined)
     } else if (activeTab.value === 'ingresses') {
       res = await resourceApi.ingresses(clusterId.value, filterNs.value || undefined)
+    } else if (activeTab.value === 'ingressroutes') {
+      res = await resourceApi.ingressroutes(clusterId.value, filterNs.value || undefined)
+    } else if (activeTab.value === 'ingressroutetcps') {
+      res = await resourceApi.ingressroutetcps(clusterId.value, filterNs.value || undefined)
+    } else if (activeTab.value === 'ingressrouteudps') {
+      res = await resourceApi.ingressrouteudps(clusterId.value, filterNs.value || undefined)
     } else if (activeTab.value === 'apisixroutes') {
       res = await resourceApi.apisixroutes(clusterId.value, filterNs.value || undefined)
     } else if (activeTab.value === 'apisixtlses') {
