@@ -96,6 +96,7 @@ k8s_auto_scaler/
 │   │   ├── schemas.py       # Pydantic 请求/响应模型
 │   │   ├── scheduler.py     # APScheduler 定时扩缩容
 │   │   ├── routers/         # API 路由
+│   │   │   ├── clusters.py  # 集群管理 API
 │   │   └── services/        # K8s 服务封装
 │   └── requirements.txt
 ├── frontend/
@@ -189,3 +190,39 @@ k8s_auto_scaler/
 - kubeconfig 使用 Fernet 对称加密存储，密钥不落库
 - 生产环境必须配置 `KUBECONFIG_ENCRYPTION_KEY`，并妥善保管
 - API 响应不包含 kubeconfig 明文或路径
+
+## 日志说明
+
+后端使用 Python 标准 `logging` 模块记录日志，日志级别由 `DEBUG` 环境变量控制。
+
+### 日志级别
+
+| 环境变量 | 日志级别 | 说明 |
+|---------|---------|------|
+| `DEBUG=True` | DEBUG | 包含详细操作信息 |
+| `DEBUG=False` | INFO | 包含关键操作和警告 |
+
+### 日志格式
+
+```
+%(asctime)s - %(name)s - %(levelname)s - %(message)s
+```
+
+示例：
+```
+2026-03-26 10:30:00 - app.routers.clusters - INFO - 集群创建成功: id=1, name=prod-cluster
+2026-03-26 10:31:00 - app.routers.scaling - INFO - 定时任务创建成功: id=1, cluster=prod-cluster, resource=default/nginx, replicas=3, cron=0 9 * * 1-5
+```
+
+### 主要日志事件
+
+| 模块 | 事件 | 级别 |
+|------|------|------|
+| clusters | 创建/更新/删除集群 | INFO |
+| clusters | kubeconfig 更新 | INFO |
+| clusters | 连接测试成功/失败 | INFO/WARNING |
+| scaling | 创建/更新/删除定时任务 | INFO |
+| scaling | 立即扩缩容成功/失败 | INFO/WARNING |
+| scheduler | 定时扩缩容执行成功/失败 | INFO/WARNING/ERROR |
+| k8s_service | helm CLI 下载成功/失败 | INFO/WARNING/ERROR |
+| k8s_service | Deployment/StatefulSet 扩缩容 | INFO/ERROR |

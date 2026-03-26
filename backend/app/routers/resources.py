@@ -4,9 +4,12 @@ K8s 资源查询 API
 按集群与资源类型查询 Deployment、Pod、Service、Ingress、ConfigMap、Secret 等，
 支持命名空间筛选，部分资源支持 YAML 查看。
 """
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+
 from app.database import get_db
 from app.models import Cluster
 from app.services.k8s_service import (
@@ -30,6 +33,7 @@ from app.services.k8s_service import (
     list_traefikingressudps,
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/resources", tags=["resources"])
 
 
@@ -254,6 +258,10 @@ async def get_resource_yaml_endpoint(
     api_client = get_api_client_for_cluster(cluster)
     try:
         yaml_content = get_resource_yaml(api_client, resource_type, namespace, name)
+        logger.debug(f"获取 YAML 成功: cluster={cluster.name}, type={resource_type}, "
+                     f"namespace={namespace}, name={name}")
         return {"yaml": yaml_content, "resource_type": resource_type, "namespace": namespace, "name": name}
     except Exception as e:
+        logger.warning(f"获取 YAML 失败: cluster={cluster.name}, type={resource_type}, "
+                       f"namespace={namespace}, name={name}, 原因: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))

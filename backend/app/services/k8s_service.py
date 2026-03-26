@@ -3,21 +3,26 @@ Kubernetes 集群服务
 
 - 从数据库解密 kubeconfig 并创建 K8s API 客户端
 - 封装各类资源（Deployment、Pod、Service 等）的列表与扩缩容操作
-- 支持 CRD：Argo Rollout、Apache APISIX Route/TLS、Helm Release
+- 支持 CRD：Argo Rollout、Apache APISIX Route/TLS、Traefik IngressRoute/TCP/UDP、Helm Release
 """
 import json
+import logging
 import os
 import re
 import subprocess
 import tempfile
-import yaml
 from datetime import datetime, timezone
+
+import yaml
 from kubernetes import client, config
 from kubernetes.client.rest import ApiException
-from app.models import Cluster
-from app.crypto_utils import decrypt_kubeconfig
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+
+from app.models import Cluster
+from app.crypto_utils import decrypt_kubeconfig
+
+logger = logging.getLogger(__name__)
 
 
 def load_k8s_client_from_content(kubeconfig_content: str):
@@ -458,12 +463,9 @@ def list_helm_releases(kubeconfig_content: str, namespace: str | None = None) ->
     - helm_available=True: {"items": [...], "helm_available": True, "error": None}
     - helm_available=False: {"items": [], "helm_available": False, "error": "helm 未安装或下载失败"}
     """
-    import logging
-    logger = logging.getLogger(__name__)
-
     helm_path = _ensure_helm()
     if not helm_path:
-        logger.warning("helm not available")
+        logger.warning("helm not available, 请确保 helm CLI 已安装并可访问")
         return {"items": [], "helm_available": False, "error": "helm 未安装或下载失败，请确保 helm CLI 已安装并可访问"}
 
     with tempfile.NamedTemporaryFile(mode='w', suffix='.kubeconfig', delete=False) as f:
@@ -504,9 +506,6 @@ def list_helm_releases(kubeconfig_content: str, namespace: str | None = None) ->
 
 def _ensure_helm() -> str | None:
     """检测或安装 helm CLI，返回 helm 路径"""
-    import logging
-    logger = logging.getLogger(__name__)
-
     # 1. 检查 PATH 中是否已有 helm
     helm_in_path = _find_helm_in_path()
     if helm_in_path:
@@ -702,15 +701,15 @@ def scale_deployment(
     """扩展 Deployment 副本数"""
     apps_v1 = client.AppsV1Api(api_client)
     try:
-        deploy = apps_v1.read_namespaced_deployment(name=name, namespace=namespace)
-        deploy.spec.replicas = replicas
         apps_v1.patch_namespaced_deployment_scale(
             name=name,
             namespace=namespace,
             body={"spec": {"replicas": replicas}},
         )
+        logger.info(f"Deployment 扩缩容成功: {namespace}/{name} -> {replicas} 副本")
         return {"success": True, "message": f"已将 {name} 扩缩至 {replicas} 副本"}
     except ApiException as e:
+        logger.error(f"Deployment 扩缩容失败: {namespace}/{name}, 原因: {e.reason}")
         return {"success": False, "message": str(e.reason)}
 
 
@@ -725,8 +724,10 @@ def scale_statefulset(
             namespace=namespace,
             body={"spec": {"replicas": replicas}},
         )
+        logger.info(f"StatefulSet 扩缩容成功: {namespace}/{name} -> {replicas} 副本")
         return {"success": True, "message": f"已将 {name} 扩缩至 {replicas} 副本"}
     except ApiException as e:
+        logger.error(f"StatefulSet 扩缩容失败: {namespace}/{name}, 原因: {e.reason}")
         return {"success": False, "message": str(e.reason)}
 
 
