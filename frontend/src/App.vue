@@ -38,8 +38,11 @@
         </section>
 
         <section v-if="currentClusterId && onClusterPage" class="sidebar-section">
-          <h3 class="sidebar-title">工作负载</h3>
-          <nav class="sidebar-nav">
+          <h3 class="sidebar-title collapsible" @click="toggleSection('workload')">
+            <span class="collapse-arrow" :class="{ collapsed: expandedSection !== 'workload' }">▸</span>
+            工作负载
+          </h3>
+          <nav v-show="expandedSection === 'workload'" class="sidebar-nav">
             <router-link
               v-for="r in resourceTypes"
               :key="r.key"
@@ -52,8 +55,11 @@
           </nav>
         </section>
         <section v-if="currentClusterId && onClusterPage" class="sidebar-section">
-          <h3 class="sidebar-title">网络</h3>
-          <nav class="sidebar-nav">
+          <h3 class="sidebar-title collapsible" @click="toggleSection('network')">
+            <span class="collapse-arrow" :class="{ collapsed: expandedSection !== 'network' }">▸</span>
+            网络
+          </h3>
+          <nav v-show="expandedSection === 'network'" class="sidebar-nav">
             <router-link
               v-for="r in networkTypes"
               :key="r.key"
@@ -66,8 +72,11 @@
           </nav>
         </section>
         <section v-if="currentClusterId && onClusterPage" class="sidebar-section">
-          <h3 class="sidebar-title">Apisix</h3>
-          <nav class="sidebar-nav">
+          <h3 class="sidebar-title collapsible" @click="toggleSection('apisix')">
+            <span class="collapse-arrow" :class="{ collapsed: expandedSection !== 'apisix' }">▸</span>
+            Apisix
+          </h3>
+          <nav v-show="expandedSection === 'apisix'" class="sidebar-nav">
             <router-link
               v-for="r in apisixTypes"
               :key="r.key"
@@ -80,8 +89,11 @@
           </nav>
         </section>
         <section v-if="currentClusterId && onClusterPage" class="sidebar-section">
-          <h3 class="sidebar-title">Traefik</h3>
-          <nav class="sidebar-nav">
+          <h3 class="sidebar-title collapsible" @click="toggleSection('traefik')">
+            <span class="collapse-arrow" :class="{ collapsed: expandedSection !== 'traefik' }">▸</span>
+            Traefik
+          </h3>
+          <nav v-show="expandedSection === 'traefik'" class="sidebar-nav">
             <router-link
               v-for="r in traefikTypes"
               :key="r.key"
@@ -94,8 +106,11 @@
           </nav>
         </section>
         <section v-if="currentClusterId && onClusterPage" class="sidebar-section">
-          <h3 class="sidebar-title">配置管理</h3>
-          <nav class="sidebar-nav">
+          <h3 class="sidebar-title collapsible" @click="toggleSection('config')">
+            <span class="collapse-arrow" :class="{ collapsed: expandedSection !== 'config' }">▸</span>
+            配置管理
+          </h3>
+          <nav v-show="expandedSection === 'config'" class="sidebar-nav">
             <router-link
               v-for="r in configTypes"
               :key="r.key"
@@ -109,8 +124,11 @@
         </section>
 
         <section v-if="currentClusterId && onClusterPage" class="sidebar-section">
-          <h3 class="sidebar-title">应用</h3>
-          <nav class="sidebar-nav">
+          <h3 class="sidebar-title collapsible" @click="toggleSection('app')">
+            <span class="collapse-arrow" :class="{ collapsed: expandedSection !== 'app' }">▸</span>
+            应用
+          </h3>
+          <nav v-show="expandedSection === 'app'" class="sidebar-nav">
             <router-link
               v-for="r in appTypes"
               :key="r.key"
@@ -144,7 +162,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useClusterStore } from '@/stores/cluster'
 import { useThemeStore } from '@/stores/theme'
@@ -153,6 +171,17 @@ const route = useRoute()
 const themeStore = useThemeStore()
 const router = useRouter()
 const clusterStore = useClusterStore()
+
+// 侧边栏折叠状态（展开的栏目 key）
+const expandedSection = ref<string>('workload')
+
+function toggleSection(key: string) {
+  if (expandedSection.value === key) {
+    expandedSection.value = null
+  } else {
+    expandedSection.value = key
+  }
+}
 
 const appTypes = [
   { key: 'helm', label: 'Helm' },
@@ -223,3 +252,27 @@ onMounted(() => {
   themeStore.initTheme()
 })
 </script>
+
+<style scoped>
+.sidebar-title.collapsible {
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.sidebar-title.collapsible:hover {
+  opacity: 0.8;
+}
+.collapse-arrow {
+  font-size: 0.75rem;
+  transition: transform 0.15s ease;
+  display: inline-block;
+}
+.collapse-arrow.collapsed {
+  transform: rotate(0deg);
+}
+.collapse-arrow:not(.collapsed) {
+  transform: rotate(90deg);
+}
+</style>
