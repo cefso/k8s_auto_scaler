@@ -63,14 +63,19 @@
       </div>
 
       <!-- YAML 查看弹窗 -->
-      <div v-if="yamlModal" class="modal-overlay" @click.self="yamlModal = null">
+      <div v-if="yamlModal" class="modal-overlay" @click.self="closeYamlModal">
         <div class="modal modal-yaml">
           <div class="modal-header">
             <h2>YAML - {{ yamlModal.namespace }}/{{ yamlModal.name }}</h2>
-            <button class="btn btn-sm btn-secondary" @click="yamlModal = null">关闭</button>
+            <div class="modal-header-actions">
+              <button v-if="hasCollapsedFields" class="btn btn-sm btn-secondary" @click="toggleYamlFields">
+                {{ showCollapsedFields ? '折叠冗余字段' : '显示全部字段' }}
+              </button>
+              <button class="btn btn-sm btn-secondary" @click="closeYamlModal">关闭</button>
+            </div>
           </div>
           <pre v-if="yamlLoading" class="yaml-content">加载中...</pre>
-          <pre v-else class="yaml-content">{{ yamlContent }}</pre>
+          <pre v-else class="yaml-content">{{ displayYaml }}</pre>
         </div>
       </div>
 
@@ -152,8 +157,35 @@ const scaleLoading = ref(false)
 
 const yamlModal = ref<{ namespace: string; name: string } | null>(null)
 const yamlContent = ref('')
+const yamlRawContent = ref('')  // 原始 YAML（未折叠）
 const yamlLoading = ref(false)
+const showCollapsedFields = ref(false)
 const helmError = ref('')
+
+const hasCollapsedFields = computed(() => {
+  // 检查原始 YAML 中是否包含需要折叠的字段
+  const raw = yamlRawContent.value
+  if (!raw) return false
+  // 使用正则匹配字段名（行首缩进 + 字段名 + : 结尾），使用 m 标志匹配行尾
+  const pattern = /^\s*(managedFields|status):\s*$/m
+  return pattern.test(raw)
+})
+
+const displayYaml = computed(() => {
+  if (showCollapsedFields.value) {
+    return yamlRawContent.value
+  }
+  return yamlContent.value
+})
+
+function closeYamlModal() {
+  yamlModal.value = null
+  showCollapsedFields.value = false
+}
+
+function toggleYamlFields() {
+  showCollapsedFields.value = !showCollapsedFields.value
+}
 
 const tabLabel = computed(() => tabs.find((t) => t.key === activeTab.value)?.label || '')
 
@@ -372,7 +404,9 @@ async function refreshAll() {
 async function openYamlModal(item: any) {
   yamlModal.value = { namespace: item.namespace, name: item.name }
   yamlContent.value = ''
+  yamlRawContent.value = ''
   yamlLoading.value = true
+  showCollapsedFields.value = false
   try {
     const res = await resourceApi.getYaml(
       clusterId.value,
@@ -380,12 +414,92 @@ async function openYamlModal(item: any) {
       item.namespace,
       item.name
     )
-    yamlContent.value = res.data.yaml
+    yamlRawContent.value = res.data.yaml
+    yamlContent.value = collapseYamlFields(res.data.yaml)
   } catch (e: any) {
     yamlContent.value = '加载失败: ' + (e.response?.data?.detail || e.message)
+    yamlRawContent.value = ''
   } finally {
     yamlLoading.value = false
   }
+}
+
+function collapseYamlFields(yaml: string): string {
+  const lines = yaml.split('\n')
+  const result: string[] = []
+  const fieldsToCollapse = ['managedFields', 'status']
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+
+    // 跳过空行，直接传递
+    if (line.trim() === '') {
+      result.push(line)
+      continue
+    }
+
+    // 检查是否是需要折叠的字段（行尾是冒号，没有值）
+    const fieldMatch = line.match(/^(\s*)(\w+):\s*$/)
+    if (fieldMatch) {
+      const fieldIndent = fieldMatch[1].length
+      const fieldName = fieldMatch[2]
+
+      if (fieldsToCollapse.includes(fieldName)) {
+        // 找到目标字段，添加折叠标记
+        result.push(`${fieldMatch[1]}# --- ${fieldName} 已折叠 ---`)
+
+        // 跳过该字段的所有子行
+        i++
+        let contentIndent: number | null = null
+        let isArray = false
+
+        while (i < lines.length) {
+          const currentLine = lines[i]
+
+          // 空行跳过
+          if (currentLine.trim() === '') {
+            i++
+            continue
+          }
+
+          const currentIndent = currentLine.search(/\S/)
+
+          // 记录第一个内容行的缩进
+          if (contentIndent === null) {
+            contentIndent = currentIndent
+            // 检查是否是数组（内容以 `-` 开头）
+            isArray = currentLine.trim().startsWith('-')
+          }
+
+          if (isArray) {
+            // 对于数组：
+            // 缩进 <= contentIndent - 1：回到上级，停止
+            if (currentIndent <= contentIndent - 1) {
+              break
+            }
+            // 缩进 == contentIndent 且不是数组项：新的兄弟字段，停止
+            if (currentIndent === contentIndent && !currentLine.trim().startsWith('-')) {
+              break
+            }
+            // 否则继续（嵌套内容或数组项延续）
+          } else {
+            // 对于非数组对象：当缩进回到 fieldIndent 级别时停止
+            if (currentIndent <= fieldIndent) {
+              break
+            }
+          }
+
+          i++
+        }
+        continue
+      }
+    }
+
+    // 普通行，直接保留
+    result.push(line)
+  }
+
+  return result.join('\n')
 }
 
 function openScaleModal(item: any) {
@@ -497,11 +611,18 @@ onMounted(loadCluster)
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 .modal-header h2 {
   margin: 0;
   font-size: 1rem;
   font-family: var(--font-mono);
+}
+.modal-header-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
 }
 .yaml-content {
   flex: 1;
