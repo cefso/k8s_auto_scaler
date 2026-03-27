@@ -2,8 +2,10 @@
   <div>
     <div class="page-header">
       <h1 class="page-title">定时扩缩容</h1>
-      <button class="btn btn-secondary" @click="loadAll">刷新</button>
-      <button class="btn btn-primary" @click="showAddModal = true">新建任务</button>
+      <div class="page-header-actions">
+        <button class="btn btn-secondary" @click="loadAll">刷新</button>
+        <button class="btn btn-primary" @click="showAddModal = true">新建任务</button>
+      </div>
     </div>
 
     <div class="card" v-if="schedules.length">
@@ -237,6 +239,11 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1.5rem;
+}
+.page-header-actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
 }
 code {
   font-family: var(--font-mono);

@@ -2,10 +2,12 @@
   <div>
     <div class="page-header">
       <h1 class="page-title">集群管理</h1>
-      <button class="btn btn-secondary" @click="loadClusters">刷新</button>
-      <button class="btn btn-primary" @click="showAddModal = true">
-        添加集群
-      </button>
+      <div class="page-header-actions">
+        <button class="btn btn-secondary" @click="loadClusters">刷新</button>
+        <button class="btn btn-primary" @click="showAddModal = true">
+          添加集群
+        </button>
+      </div>
     </div>
 
     <div class="card" v-if="clusters.length">
@@ -198,6 +200,11 @@ onMounted(loadClusters)
   justify-content: space-between;
   align-items: center;
   margin-bottom: 1.5rem;
+}
+.page-header-actions {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
 }
 .link {
   color: var(--accent);
