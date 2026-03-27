@@ -48,14 +48,14 @@
               :class="['sidebar-item', { active: currentTab === 'dashboard' }]"
             >
               <span class="sidebar-icon">▪</span>
-              概览
+              集群概览
             </router-link>
             <router-link
               :to="`/cluster/${currentClusterId}?tab=nodes`"
               :class="['sidebar-item', { active: currentTab === 'nodes' }]"
             >
               <span class="sidebar-icon">▪</span>
-              节点
+              节点概览
             </router-link>
           </nav>
         </section>

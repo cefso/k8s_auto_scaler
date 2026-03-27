@@ -695,6 +695,33 @@ def list_pods(api_client, namespace: str | None = None) -> list[dict]:
     return result
 
 
+def list_events(api_client, namespace: str | None = None, limit: int = 100) -> list[dict]:
+    """列出 Events"""
+    v1 = client.CoreV1Api(api_client)
+    if namespace:
+        events = v1.list_namespaced_event(namespace=namespace, limit=limit)
+    else:
+        events = v1.list_event_for_all_namespaces(limit=limit)
+
+    result = []
+    for e in events.items:
+        result.append({
+            "name": e.metadata.name,
+            "namespace": e.metadata.namespace,
+            "type": e.type or 'Normal',
+            "reason": e.reason or '',
+            "message": e.message or '',
+            "source": e.source.component if e.source else '',
+            "age": _get_age(e.metadata.creation_timestamp),
+            "count": e.count or 1,
+            "last_timestamp": e.last_timestamp.isoformat() if e.last_timestamp else '',
+            "involved_object": f"{e.involved_object.kind}/{e.involved_object.name}" if e.involved_object else '',
+        })
+    # 按时间倒序
+    result.sort(key=lambda x: x['last_timestamp'] or '', reverse=True)
+    return result
+
+
 def get_cluster_overview(api_client) -> dict:
     """获取集群基础统计信息
 
@@ -889,14 +916,18 @@ def get_node_metrics(api_client, kubeconfig_content: str = None) -> dict:
                 "memory_limit": 0,
                 "memory_usage": 0,
             }
-            # 获取节点 allocatable 资源（作为 request/capacity）
+            # 获取节点 allocatable 资源
             if node.status.allocatable:
                 cpu_alloc = node.status.allocatable.get('cpu')
                 mem_alloc = node.status.allocatable.get('memory')
                 if cpu_alloc:
-                    item["cpu_request"] = _parse_cpu_value(cpu_alloc)
+                    val = _parse_cpu_value(cpu_alloc)
+                    item["cpu_request"] = val
+                    item["cpu_limit"] = val  # allocatable 作为节点容量
                 if mem_alloc:
-                    item["memory_request"] = _parse_resource_value(mem_alloc)
+                    val = _parse_resource_value(mem_alloc)
+                    item["memory_request"] = val
+                    item["memory_limit"] = val  # allocatable 作为节点容量
             items.append(item)
     except Exception as e:
         logger.warning(f"获取节点列表失败: {e}")

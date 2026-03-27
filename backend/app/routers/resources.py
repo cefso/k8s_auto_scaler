@@ -25,6 +25,7 @@ from app.services.k8s_service import (
     list_statefulsets,
     list_rollouts,
     list_pods,
+    list_events,
     list_services,
     list_ingresses,
     list_apisixroutes,
@@ -260,6 +261,19 @@ async def get_pods(
     api_client = get_api_client_for_cluster(cluster)
     items = list_pods(api_client, namespace)
     return {"cluster_id": cluster_id, "resource_type": "Pod", "items": items, "total": len(items)}
+
+
+@router.get("/{cluster_id}/events")
+async def get_events(
+    cluster_id: int,
+    namespace: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取 Event 列表"""
+    cluster = await _get_cluster(db, cluster_id)
+    api_client = get_api_client_for_cluster(cluster)
+    items = list_events(api_client, namespace)
+    return {"cluster_id": cluster_id, "resource_type": "Event", "items": items, "total": len(items)}
 
 
 @router.get("/{cluster_id}/configmaps")

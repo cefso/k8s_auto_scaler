@@ -111,8 +111,8 @@ const error = ref('')
 const connectionOk = ref(false)
 
 const tabs = [
-  { key: 'dashboard', label: '概览' },
-  { key: 'nodes', label: '节点' },
+  { key: 'dashboard', label: '集群概览' },
+  { key: 'nodes', label: '节点概览' },
   { key: 'helm', label: 'Helm' },
   { key: 'deployments', label: 'Deployment' },
   { key: 'statefulsets', label: 'StatefulSet' },

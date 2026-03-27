@@ -113,6 +113,43 @@
         </div>
       </div>
 
+      <!-- Events -->
+      <div class="card" style="margin-top: 1.5rem">
+        <div class="card-header">
+          <span class="card-title">集群事件</span>
+        </div>
+        <div class="card-body">
+          <div v-if="eventsLoading" class="empty-state">Loading...</div>
+          <div v-else-if="!events?.length" class="empty-state">暂无事件数据</div>
+          <div v-else class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>类型</th>
+                  <th>原因</th>
+                  <th>对象</th>
+                  <th>消息</th>
+                  <th>时间</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="event in events" :key="event.name + event.last_timestamp">
+                  <td>
+                    <span class="event-type" :class="event.type === 'Warning' ? 'event-warning' : 'event-normal'">
+                      {{ event.type }}
+                    </span>
+                  </td>
+                  <td>{{ event.reason || '-' }}</td>
+                  <td class="event-object">{{ event.involved_object || '-' }}</td>
+                  <td class="event-message">{{ event.message || '-' }}</td>
+                  <td>{{ event.age || '-' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
     </template>
   </div>
 </template>
@@ -126,6 +163,8 @@ const props = defineProps<{
 
 const overview = ref<any>(null)
 const podMetrics = ref<any>(null)
+const events = ref<any[]>([])
+const eventsLoading = ref(false)
 const loading = ref(true)
 const error = ref('')
 
@@ -149,11 +188,24 @@ async function loadPodMetrics() {
   }
 }
 
+async function loadEvents() {
+  eventsLoading.value = true
+  try {
+    const { resourceApi } = await import('@/api')
+    const res = await resourceApi.events(props.clusterId)
+    events.value = res.data.items || []
+  } catch (e: any) {
+    events.value = []
+  } finally {
+    eventsLoading.value = false
+  }
+}
+
 async function loadAll() {
   loading.value = true
   error.value = ''
   try {
-    await Promise.all([loadOverview(), loadPodMetrics()])
+    await Promise.all([loadOverview(), loadPodMetrics(), loadEvents()])
   } catch (e: any) {
     error.value = e.message || 'Load failed'
   } finally {
@@ -251,5 +303,32 @@ function formatBytes(bytes: number | undefined): string {
 }
 .text-muted {
   color: var(--text-muted);
+}
+.event-type {
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+.event-normal {
+  background: rgba(63, 185, 80, 0.15);
+  color: var(--success);
+}
+.event-warning {
+  background: rgba(230, 162, 60, 0.15);
+  color: var(--warning);
+}
+.event-object {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.event-message {
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>

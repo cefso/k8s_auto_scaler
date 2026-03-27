@@ -66,6 +66,8 @@ export const resourceApi = {
     api.get(`/resources/${clusterId}/ingressrouteudps`, { params: { namespace } }),
   pods: (clusterId: number, namespace?: string) =>
     api.get(`/resources/${clusterId}/pods`, { params: { namespace } }),
+  events: (clusterId: number, namespace?: string) =>
+    api.get(`/resources/${clusterId}/events`, { params: { namespace } }),
   services: (clusterId: number, namespace?: string) =>
     api.get(`/resources/${clusterId}/services`, { params: { namespace } }),
   ingresses: (clusterId: number, namespace?: string) =>
