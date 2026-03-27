@@ -695,6 +695,138 @@ def list_pods(api_client, namespace: str | None = None) -> list[dict]:
     return result
 
 
+def get_cluster_metrics(api_client, kubeconfig_content: str = None) -> dict:
+    """获取集群 metrics 汇总信息
+
+    返回:
+    - pod_stats: Pod 统计（总数、running、pending、failed）
+    - node_count: 节点数量
+    - deployment_count: Deployment 数量
+    - statefulset_count: StatefulSet 数量
+    - namespace_count: 命名空间数量
+    - cpu_usage: CPU 使用量 (cores)
+    - memory_usage: 内存使用量 (bytes)
+    - pod_memory_request: Pod 内存请求量 (bytes)
+    - pod_memory_limit: Pod 内存 limit 量 (bytes)
+    - pod_cpu_request: Pod CPU 请求量 (cores)
+    - pod_cpu_limit: Pod CPU limit 量 (cores)
+    - metrics_available: 是否可用 metrics-server
+    """
+    v1 = client.CoreV1Api(api_client)
+    apps_v1 = client.AppsV1Api(api_client)
+
+    # Pod 统计及资源请求/limit 汇总
+    all_pods = v1.list_pod_for_all_namespaces()
+    pod_stats = {"total": 0, "running": 0, "pending": 0, "failed": 0}
+    pod_memory_request = 0
+    pod_memory_limit = 0
+    pod_cpu_request = 0.0
+    pod_cpu_limit = 0.0
+    for pod in all_pods.items:
+        pod_stats["total"] += 1
+        phase = pod.status.phase if pod.status else "Unknown"
+        if phase == "Running":
+            pod_stats["running"] += 1
+        elif phase == "Pending":
+            pod_stats["pending"] += 1
+        elif phase == "Failed":
+            pod_stats["failed"] += 1
+        # 统计 Pod CPU/内存请求和 limit
+        for container in pod.spec.containers:
+            if container.resources.requests:
+                if container.resources.requests.get('cpu'):
+                    pod_cpu_request += _parse_cpu_value(container.resources.requests['cpu'])
+                if container.resources.requests.get('memory'):
+                    pod_memory_request += _parse_resource_value(container.resources.requests['memory'])
+            if container.resources.limits:
+                if container.resources.limits.get('cpu'):
+                    pod_cpu_limit += _parse_cpu_value(container.resources.limits['cpu'])
+                if container.resources.limits.get('memory'):
+                    pod_memory_limit += _parse_resource_value(container.resources.limits['memory'])
+
+    # 节点统计
+    try:
+        nodes = v1.list_node()
+        node_count = len(nodes.items)
+    except Exception:
+        node_count = 0
+
+    # Deployment/StatefulSet 统计
+    try:
+        deployments = apps_v1.list_deployment_for_all_namespaces()
+        deployment_count = len(deployments.items)
+    except Exception:
+        deployment_count = 0
+
+    try:
+        statefulsets = apps_v1.list_stateful_set_for_all_namespaces()
+        statefulset_count = len(statefulsets.items)
+    except Exception:
+        statefulset_count = 0
+
+    # 命名空间统计
+    try:
+        namespaces = v1.list_namespace()
+        namespace_count = len(namespaces.items)
+    except Exception:
+        namespace_count = 0
+
+    # 从 metrics-server 获取 CPU 和内存使用量（使用 kubectl top）
+    cpu_usage = 0
+    memory_usage = 0
+    metrics_available = False
+    kubeconfig_path = None
+
+    if kubeconfig_content:
+        try:
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.kubeconfig', delete=False) as f:
+                f.write(kubeconfig_content)
+                kubeconfig_path = f.name
+
+            env = os.environ.copy()
+            env["KUBECONFIG"] = kubeconfig_path
+
+            # 获取 node metrics
+            result = subprocess.run(
+                ["kubectl", "top", "nodes", "--no-headers"],
+                capture_output=True, text=True, env=env, timeout=30
+            )
+            if result.returncode == 0:
+                metrics_available = True
+                for line in result.stdout.strip().split('\n'):
+                    if line:
+                        parts = line.split()
+                        # 输出格式: NAME   CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%
+                        if len(parts) >= 4:
+                            cpu_str = parts[1]
+                            mem_str = parts[3]
+                            if 'm' in cpu_str:
+                                cpu_usage += int(cpu_str.replace('m', '')) / 1000
+                            else:
+                                cpu_usage += int(cpu_str)
+                            memory_usage += _parse_resource_value(mem_str)
+        except Exception as e:
+            logger.warning(f"无法获取 metrics: {e}")
+        finally:
+            if kubeconfig_path:
+                os.unlink(kubeconfig_path)
+
+    return {
+        "pod_stats": pod_stats,
+        "node_count": node_count,
+        "deployment_count": deployment_count,
+        "statefulset_count": statefulset_count,
+        "namespace_count": namespace_count,
+        "cpu_usage": round(cpu_usage, 2),
+        "memory_usage": memory_usage,
+        "pod_cpu_request": round(pod_cpu_request, 2),
+        "pod_cpu_limit": round(pod_cpu_limit, 2),
+        "pod_memory_request": pod_memory_request,
+        "pod_memory_limit": pod_memory_limit,
+        "metrics_available": metrics_available,
+    }
+
+
 def scale_deployment(
     api_client, namespace: str, name: str, replicas: int
 ) -> dict:
@@ -729,6 +861,48 @@ def scale_statefulset(
     except ApiException as e:
         logger.error(f"StatefulSet 扩缩容失败: {namespace}/{name}, 原因: {e.reason}")
         return {"success": False, "message": str(e.reason)}
+
+
+def _parse_cpu_value(value: str) -> float:
+    """解析 Kubernetes CPU 资源值为 cores"""
+    if not value:
+        return 0.0
+    if value.endswith("m"):
+        return int(value[:-1]) / 1000  # millicores to cores
+    elif value.endswith("n"):
+        return int(value[:-1]) / 1_000_000_000  # nanocores to cores
+    else:
+        try:
+            return float(value)
+        except ValueError:
+            return 0.0
+
+
+def _parse_resource_value(value: str) -> int:
+    """解析 Kubernetes 资源值（memory）"""
+    if not value:
+        return 0
+    if value.endswith("Ki"):
+        return int(value[:-2]) * 1024
+    elif value.endswith("Mi"):
+        return int(value[:-2]) * 1024 * 1024
+    elif value.endswith("Gi"):
+        return int(value[:-2]) * 1024 * 1024 * 1024
+    elif value.endswith("Ti"):
+        return int(value[:-2]) * 1024 * 1024 * 1024 * 1024
+    elif value.endswith("K") and not value.endswith("Ki"):
+        return int(value[:-1]) * 1000
+    elif value.endswith("M") and not value.endswith("Mi"):
+        return int(value[:-1]) * 1000 * 1000
+    elif value.endswith("G") and not value.endswith("Gi"):
+        return int(value[:-1]) * 1000 * 1000 * 1000
+    elif value.endswith("T") and not value.endswith("Ti"):
+        return int(value[:-1]) * 1000 * 1000 * 1000 * 1000
+    else:
+        try:
+            return int(value)
+        except ValueError:
+            return 0
 
 
 def _get_age(creation_timestamp) -> str:

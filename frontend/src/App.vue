@@ -38,6 +38,17 @@
         </section>
 
         <section v-if="currentClusterId && onClusterPage" class="sidebar-section">
+          <nav class="sidebar-nav">
+            <router-link
+              :to="`/cluster/${currentClusterId}?tab=dashboard`"
+              :class="['sidebar-item', { active: currentTab === 'dashboard' }]"
+            >
+              <span class="sidebar-icon">▪</span>
+              概览
+            </router-link>
+          </nav>
+        </section>
+        <section v-if="currentClusterId && onClusterPage" class="sidebar-section">
           <h3 class="sidebar-title collapsible" @click="toggleSection('workload')">
             <span class="collapse-arrow" :class="{ collapsed: expandedSection !== 'workload' }">▸</span>
             工作负载
@@ -223,7 +234,7 @@ function onClusterChange(e: Event) {
   const target = e.target as HTMLSelectElement
   const id = target.value ? Number(target.value) : null
   if (id) {
-    router.push(`/cluster/${id}?tab=deployments`)
+    router.push(`/cluster/${id}?tab=dashboard`)
   }
 }
 
@@ -236,7 +247,7 @@ const onClusterPage = computed(() => route.path.startsWith('/cluster/'))
 
 const onSchedulePage = computed(() => route.path === '/schedules')
 
-const currentTab = computed(() => route.query.tab as string || 'deployments')
+const currentTab = computed(() => route.query.tab as string || 'dashboard')
 
 watch(
   () => route.path,

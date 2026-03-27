@@ -20,6 +20,9 @@
         </div>
       </div>
 
+      <!-- Dashboard 概览 -->
+      <Dashboard v-if="activeTab === 'dashboard'" :cluster-id="clusterId" />
+
       <div class="card">
         <div class="card-header">
           <span class="card-title">{{ tabLabel }}</span>
@@ -96,6 +99,7 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { clusterApi, resourceApi } from '@/api'
 import type { Cluster } from '@/api'
+import Dashboard from './Dashboard.vue'
 
 const route = useRoute()
 const clusterId = computed(() => Number(route.params.id))
@@ -105,6 +109,7 @@ const error = ref('')
 const connectionOk = ref(false)
 
 const tabs = [
+  { key: 'dashboard', label: '概览' },
   { key: 'helm', label: 'Helm' },
   { key: 'deployments', label: 'Deployment' },
   { key: 'statefulsets', label: 'StatefulSet' },
@@ -123,11 +128,11 @@ const tabs = [
 
 const activeTab = computed(() => {
   const t = route.query.tab as string
-  return tabs.some((x) => x.key === t) ? t : 'deployments'
+  return tabs.some((x) => x.key === t) ? t : 'dashboard'
 })
 
 const hasNamespaceFilter = computed(() =>
-  ['helm', 'deployments', 'statefulsets', 'rollouts', 'pods', 'services', 'ingresses', 'ingressroutes', 'ingressroutetcps', 'ingressrouteudps', 'apisixroutes', 'apisixtlses', 'configmaps', 'secrets'].includes(activeTab.value)
+  ['deployments', 'statefulsets', 'rollouts', 'pods', 'services', 'ingresses', 'ingressroutes', 'ingressroutetcps', 'ingressrouteudps', 'apisixroutes', 'apisixtlses', 'configmaps', 'secrets'].includes(activeTab.value)
 )
 
 const hasYaml = computed(() => activeTab.value !== 'helm')
@@ -310,6 +315,11 @@ async function loadNamespaces() {
 }
 
 async function loadResource() {
+  // Dashboard tab has its own data loading
+  if (activeTab.value === 'dashboard') {
+    resourceLoading.value = false
+    return
+  }
   resourceLoading.value = true
   try {
     let res: any

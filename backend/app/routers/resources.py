@@ -16,6 +16,7 @@ from app.services.k8s_service import (
     get_api_client_for_cluster,
     get_kubeconfig_content_for_cluster,
     get_resource_yaml,
+    get_cluster_metrics,
     list_namespaces,
     list_deployments,
     list_statefulsets,
@@ -45,6 +46,16 @@ async def _get_cluster(db: AsyncSession, cluster_id: int) -> Cluster:
     if not cluster.is_active:
         raise HTTPException(status_code=400, detail="集群已禁用")
     return cluster
+
+
+@router.get("/{cluster_id}/metrics")
+async def get_cluster_metrics_endpoint(cluster_id: int, db: AsyncSession = Depends(get_db)):
+    """获取集群 metrics 汇总（Pod 统计、资源使用量等）"""
+    cluster = await _get_cluster(db, cluster_id)
+    api_client = get_api_client_for_cluster(cluster)
+    kubeconfig_content = get_kubeconfig_content_for_cluster(cluster)
+    metrics = get_cluster_metrics(api_client, kubeconfig_content)
+    return {"cluster_id": cluster_id, **metrics}
 
 
 @router.get("/{cluster_id}/namespaces")
