@@ -10,6 +10,7 @@ const router = createRouter({
   routes: [
     { path: '/', component: () => import('../views/ClusterList.vue'), meta: { title: '集群' } },
     { path: '/cluster/:id', component: () => import('../views/ClusterDetail.vue'), meta: { title: '集群详情' } },
+    { path: '/cluster/:clusterId/workload', component: () => import('../views/WorkloadDetail.vue'), meta: { title: '工作负载详情' } },
     { path: '/schedules', component: () => import('../views/ScheduleList.vue'), meta: { title: '定时扩缩容' } },
   ],
 })

@@ -106,6 +106,10 @@ export const resourceApi = {
         },
       })
     },
+  workloadPods: (clusterId: number, namespace: string, workloadKind: string, workloadName: string) =>
+    api.get(`/resources/${clusterId}/workload-pods`, {
+      params: { namespace, workload_kind: workloadKind, workload_name: workloadName },
+    }),
 }
 
 export const scalingApi = {

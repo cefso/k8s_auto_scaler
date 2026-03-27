@@ -35,6 +35,7 @@ from app.services.k8s_service import (
     list_traefikingresses,
     list_traefikingresstcps,
     list_traefikingressudps,
+    get_workload_pods,
 )
 
 logger = logging.getLogger(__name__)
@@ -311,3 +312,19 @@ async def get_resource_yaml_endpoint(
         logger.warning(f"获取 YAML 失败: cluster={cluster.name}, type={resource_type}, "
                        f"namespace={namespace}, name={name}, 原因: {str(e)}")
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/{cluster_id}/workload-pods")
+async def get_workload_pods_endpoint(
+    cluster_id: int,
+    namespace: str = Query(...),
+    workload_kind: str = Query(...),
+    workload_name: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取特定工作负载的 Pod 列表及资源使用量"""
+    cluster = await _get_cluster(db, cluster_id)
+    api_client = get_api_client_for_cluster(cluster)
+    kubeconfig_content = get_kubeconfig_content_for_cluster(cluster)
+    result = get_workload_pods(api_client, namespace, workload_kind, workload_name, kubeconfig_content)
+    return {"cluster_id": cluster_id, **result}

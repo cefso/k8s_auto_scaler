@@ -45,6 +45,7 @@
                   <td v-for="(val, k) in rowData(item)" :key="k">{{ val }}</td>
                   <td v-if="hasOperations">
                     <div class="action-buttons">
+                      <button v-if="isWorkloadTab" class="btn btn-sm btn-secondary" @click="openWorkloadDetail(item)">详情</button>
                       <button v-if="hasYaml" class="btn btn-sm btn-secondary" @click="openYamlModal(item)">YAML</button>
                       <button
                         v-if="['deployments', 'statefulsets'].includes(activeTab)"
@@ -102,13 +103,14 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { clusterApi, resourceApi } from '@/api'
 import type { Cluster } from '@/api'
 import Dashboard from './Dashboard.vue'
 import NodeMetrics from './NodeMetrics.vue'
 
 const route = useRoute()
+const router = useRouter()
 const clusterId = computed(() => Number(route.params.id))
 const cluster = ref<Cluster | null>(null)
 const loading = ref(true)
@@ -145,6 +147,16 @@ const hasNamespaceFilter = computed(() =>
 
 const hasYaml = computed(() => activeTab.value !== 'helm')
 const hasOperations = computed(() => hasYaml.value || ['deployments', 'statefulsets'].includes(activeTab.value))
+const isWorkloadTab = computed(() => ['deployments', 'statefulsets', 'rollouts'].includes(activeTab.value))
+
+function getWorkloadKind(): string {
+  const map: Record<string, string> = {
+    deployments: 'Deployment',
+    statefulsets: 'StatefulSet',
+    rollouts: 'Rollout',
+  }
+  return map[activeTab.value] || ''
+}
 
 const namespaces = ref<{ name: string }[]>([])
 const items = ref<any[]>([])
@@ -509,6 +521,12 @@ function openScaleModal(item: any) {
     name: item.name,
   }
   scaleReplicas.value = item.replicas ?? 0
+}
+
+function openWorkloadDetail(item: any) {
+  router.push(
+    `/cluster/${clusterId.value}/workload?kind=${getWorkloadKind()}&namespace=${item.namespace}&name=${item.name}`
+  )
 }
 
 async function doScale() {

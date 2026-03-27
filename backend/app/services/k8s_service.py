@@ -664,7 +664,7 @@ def list_pods(api_client, namespace: str | None = None) -> list[dict]:
         pods = v1.list_namespaced_pod(namespace=namespace)
     else:
         pods = v1.list_pod_for_all_namespaces()
-    
+
     result = []
     for p in pods.items:
         status = "Unknown"
@@ -681,7 +681,17 @@ def list_pods(api_client, namespace: str | None = None) -> list[dict]:
             r = sum(1 for c in p.status.container_statuses if c.ready)
             ready = f"{r}/{total}"
             restarts = sum(c.restart_count for c in p.status.container_statuses)
-        
+
+        # 获取 owner_reference 信息
+        owner_kind = None
+        owner_name = None
+        if p.metadata.owner_references:
+            for ref in p.metadata.owner_references:
+                if ref.kind in ['Deployment', 'StatefulSet', 'Rollout']:
+                    owner_kind = ref.kind
+                    owner_name = ref.name
+                    break
+
         result.append({
             "name": p.metadata.name,
             "namespace": p.metadata.namespace,
@@ -691,8 +701,269 @@ def list_pods(api_client, namespace: str | None = None) -> list[dict]:
             "age": _get_age(p.metadata.creation_timestamp),
             "node": p.spec.node_name if p.spec else None,
             "ip": p.status.pod_ip if p.status else None,
+            "owner_kind": owner_kind,
+            "owner_name": owner_name,
         })
     return result
+
+
+def get_workload_pods(api_client, namespace: str, workload_kind: str, workload_name: str, kubeconfig_content: str = None) -> dict:
+    """获取特定工作负载的 Pod 列表及资源使用量
+
+    Args:
+        api_client: K8s API client
+        namespace: 命名空间
+        workload_kind: 工作负载类型 (Deployment/StatefulSet/Rollout)
+        workload_name: 工作负载名称
+        kubeconfig_content: kubeconfig 内容（用于获取 metrics）
+
+    Returns:
+        {"workload": {...}, "items": [...], "total": int}
+    """
+    v1 = client.CoreV1Api(api_client)
+    apps_v1 = client.AppsV1Api(api_client)
+
+    # 获取工作负载详情
+    workload_info = None
+    label_selector = None
+
+    if workload_kind == 'Deployment':
+        try:
+            deploy = apps_v1.read_namespaced_deployment(name=workload_name, namespace=namespace)
+            # 获取资源限制信息
+            cpu_limit = 0
+            memory_limit = 0
+            for container in deploy.spec.template.spec.containers:
+                if container.resources and container.resources.limits:
+                    cpu_lim = container.resources.limits.get('cpu')
+                    mem_lim = container.resources.limits.get('memory')
+                    if cpu_lim:
+                        cpu_limit += _parse_cpu_value(str(cpu_lim))
+                    if mem_lim:
+                        memory_limit += _parse_resource_value(str(mem_lim))
+
+            workload_info = {
+                "kind": "Deployment",
+                "name": deploy.metadata.name,
+                "namespace": deploy.metadata.namespace,
+                "replicas": deploy.spec.replicas or 0,
+                "ready_replicas": deploy.status.ready_replicas or 0,
+                "images": list(set([c.image for c in deploy.spec.template.spec.containers])),
+                "cpu_limit": round(cpu_limit, 4),
+                "memory_limit": memory_limit,
+            }
+
+            if deploy.spec.selector and deploy.spec.selector.match_labels:
+                labels = [f"{k}={v}" for k, v in deploy.spec.selector.match_labels.items()]
+                label_selector = ",".join(labels)
+        except Exception as e:
+            logger.warning(f"无法获取 Deployment 详情: {e}")
+
+    elif workload_kind == 'StatefulSet':
+        try:
+            sts = apps_v1.read_namespaced_stateful_set(name=workload_name, namespace=namespace)
+            # 获取资源限制信息
+            cpu_limit = 0
+            memory_limit = 0
+            for container in sts.spec.template.spec.containers:
+                if container.resources and container.resources.limits:
+                    cpu_lim = container.resources.limits.get('cpu')
+                    mem_lim = container.resources.limits.get('memory')
+                    if cpu_lim:
+                        cpu_limit += _parse_cpu_value(str(cpu_lim))
+                    if mem_lim:
+                        memory_limit += _parse_resource_value(str(mem_lim))
+
+            workload_info = {
+                "kind": "StatefulSet",
+                "name": sts.metadata.name,
+                "namespace": sts.metadata.namespace,
+                "replicas": sts.spec.replicas or 0,
+                "ready_replicas": sts.status.ready_replicas or 0,
+                "images": list(set([c.image for c in sts.spec.template.spec.containers])),
+                "cpu_limit": round(cpu_limit, 4),
+                "memory_limit": memory_limit,
+            }
+
+            if sts.spec.selector and sts.spec.selector.match_labels:
+                labels = [f"{k}={v}" for k, v in sts.spec.selector.match_labels.items()]
+                label_selector = ",".join(labels)
+        except Exception as e:
+            logger.warning(f"无法获取 StatefulSet 详情: {e}")
+
+    elif workload_kind == 'Rollout':
+        try:
+            custom_api = client.CustomObjectsApi(api_client)
+            rollout = custom_api.get_namespaced_custom_object(
+                group="argoproj.io",
+                version="v1alpha1",
+                namespace=namespace,
+                plural="rollouts",
+                name=workload_name,
+            )
+            spec = rollout.get("spec", {})
+            status = rollout.get("status", {})
+            replicas = spec.get("replicas", 0)
+            ready = status.get("readyReplicas", 0) or status.get("availableReplicas", 0)
+
+            # 获取镜像
+            images = []
+            template_spec = spec.get("template", {}).get("spec", {})
+            for container in template_spec.get("containers", []):
+                if container.get("image"):
+                    images.append(container["image"])
+
+            workload_info = {
+                "kind": "Rollout",
+                "name": rollout.get("metadata", {}).get("name"),
+                "namespace": rollout.get("metadata", {}).get("namespace"),
+                "replicas": replicas,
+                "ready_replicas": ready,
+                "images": list(set(images)),
+                "cpu_limit": None,
+                "memory_limit": None,
+            }
+
+            selector = spec.get("selector", {})
+            match_labels = selector.get("matchLabels", {})
+            if match_labels:
+                labels = [f"{k}={v}" for k, v in match_labels.items()]
+                label_selector = ",".join(labels)
+        except Exception as e:
+            logger.warning(f"无法获取 Rollout 详情: {e}")
+
+    # 使用 label selector 过滤 Pod
+    if label_selector:
+        pods = v1.list_namespaced_pod(namespace=namespace, label_selector=label_selector)
+        filtered_pods = list(pods.items)
+    else:
+        # 降级方案：使用 owner_reference
+        controller_name = workload_name
+        if workload_kind == 'Deployment':
+            try:
+                rs_list = apps_v1.list_namespaced_replica_set(namespace=namespace)
+                for rs in rs_list.items:
+                    if rs.metadata.owner_references:
+                        for ref in rs.metadata.owner_references:
+                            if ref.kind == 'Deployment' and ref.name == workload_name:
+                                controller_name = rs.metadata.name
+                                break
+            except Exception:
+                pass
+
+        pods = v1.list_namespaced_pod(namespace=namespace)
+        filtered_pods = []
+        target_kinds = ['ReplicaSet'] if workload_kind == 'Deployment' else [workload_kind]
+
+        for pod in pods.items:
+            if not pod.metadata.owner_references:
+                continue
+            for ref in pod.metadata.owner_references:
+                if ref.kind in target_kinds and ref.name == controller_name:
+                    filtered_pods.append(pod)
+                    break
+
+    # 构建返回数据（包含资源信息）
+    items = []
+    pod_metrics_map = {}
+
+    # 通过 kubectl top pods 获取实际使用量
+    if kubeconfig_content:
+        kubeconfig_path = None
+        try:
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.kubeconfig', delete=False) as f:
+                f.write(kubeconfig_content)
+                kubeconfig_path = f.name
+
+            env = os.environ.copy()
+            env["KUBECONFIG"] = kubeconfig_path
+
+            result = subprocess.run(
+                ["kubectl", "top", "pods", "-n", namespace, "--no-headers"],
+                capture_output=True, text=True, env=env, timeout=60
+            )
+            if result.returncode == 0 and result.stdout:
+                for line in result.stdout.strip().split('\n'):
+                    if line:
+                        parts = line.split()
+                        # 无表头格式: NAME CPU MEMORY
+                        # 有表头格式: NAMESPACE NAME CPU MEMORY
+                        if len(parts) >= 3:
+                            if len(parts) == 3:
+                                # 无表头: NAME CPU MEMORY
+                                name = parts[0]
+                                cpu_str = parts[1]
+                                mem_str = parts[2]
+                            else:
+                                # 有表头: NAMESPACE NAME CPU MEMORY
+                                name = parts[1]
+                                cpu_str = parts[2]
+                                mem_str = parts[3]
+                            pod_metrics_map[name] = {
+                                "cpu_usage": round(_parse_cpu_value(cpu_str), 4),
+                                "memory_usage": _parse_resource_value(mem_str),
+                            }
+                                except Exception as e:
+            logger.warning(f"无法获取 Pod metrics: {e}")
+        finally:
+            if kubeconfig_path:
+                os.unlink(kubeconfig_path)
+
+    for pod in filtered_pods:
+        cpu_request, cpu_limit, memory_request, memory_limit = 0.0, 0.0, 0, 0
+        if pod.spec.containers:
+            for container in pod.spec.containers:
+                if container.resources and container.resources.requests:
+                    cpu_req = container.resources.requests.get('cpu')
+                    mem_req = container.resources.requests.get('memory')
+                    if cpu_req:
+                        cpu_request += _parse_cpu_value(str(cpu_req))
+                    if mem_req:
+                        memory_request += _parse_resource_value(str(mem_req))
+                if container.resources and container.resources.limits:
+                    cpu_lim = container.resources.limits.get('cpu')
+                    mem_lim = container.resources.limits.get('memory')
+                    if cpu_lim:
+                        cpu_limit += _parse_cpu_value(str(cpu_lim))
+                    if mem_lim:
+                        memory_limit += _parse_resource_value(str(mem_lim))
+
+        pod_name = pod.metadata.name
+        metrics = pod_metrics_map.get(pod_name, {})
+
+        # 获取 Pod 状态
+        status = "Unknown"
+        if pod.status:
+            if pod.status.phase:
+                status = pod.status.phase
+
+        # 获取 Ready 信息
+        ready = "0/0"
+        restarts = 0
+        if pod.status and pod.status.container_statuses:
+            total = len(pod.status.container_statuses)
+            r = sum(1 for c in pod.status.container_statuses if c.ready)
+            ready = f"{r}/{total}"
+            restarts = sum(c.restart_count for c in pod.status.container_statuses)
+
+        items.append({
+            "name": pod_name,
+            "namespace": pod.metadata.namespace,
+            "phase": status,
+            "ready": ready,
+            "restarts": restarts,
+            "age": _get_age(pod.metadata.creation_timestamp),
+            "node": pod.spec.node_name if pod.spec else None,
+            "ip": pod.status.pod_ip if pod.status else None,
+            "cpu_request": round(cpu_request, 4),
+            "cpu_limit": round(cpu_limit, 4),
+            "memory_request": memory_request,
+            "memory_limit": memory_limit,
+            "cpu_usage": metrics.get("cpu_usage"),
+            "memory_usage": metrics.get("memory_usage"),
+        })
+
+    return {"workload": workload_info, "items": items, "total": len(items)}
 
 
 def list_events(api_client, namespace: str | None = None, limit: int = 100) -> list[dict]:
