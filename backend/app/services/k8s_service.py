@@ -1112,46 +1112,6 @@ def get_pod_metrics(api_client, kubeconfig_content: str = None) -> dict:
     }
 
 
-def get_cluster_metrics(api_client, kubeconfig_content: str = None) -> dict:
-    """获取集群 metrics 汇总信息（兼容旧接口）
-
-    返回:
-    - pod_stats: Pod 统计（总数、running、pending、failed）
-    - node_count: 节点数量
-    - deployment_count: Deployment 数量
-    - statefulset_count: StatefulSet 数量
-    - namespace_count: 命名空间数量
-    - cpu_usage: CPU 使用量 (cores)
-    - memory_usage: 内存使用量 (bytes)
-    - pod_memory_request: Pod 内存请求量 (bytes)
-    - pod_memory_limit: Pod 内存 limit 量 (bytes)
-    - pod_cpu_request: Pod CPU 请求量 (cores)
-    - pod_cpu_limit: Pod CPU limit 量 (cores)
-    - metrics_available: 是否可用 metrics-server
-    """
-    overview = get_cluster_overview(api_client)
-    node_metrics = get_node_metrics(api_client, kubeconfig_content)
-    pod_metrics = get_pod_metrics(api_client)
-
-    # 汇总节点使用量
-    cpu_usage = 0
-    memory_usage = 0
-    for node in node_metrics["items"]:
-        cpu_usage += node.get("cpu", 0)
-        memory_usage += node.get("memory", 0)
-
-    return {
-        **overview,
-        "cpu_usage": round(cpu_usage, 2),
-        "memory_usage": memory_usage,
-        "pod_cpu_request": pod_metrics["total_request"]["cpu"],
-        "pod_cpu_limit": pod_metrics["total_limit"]["cpu"],
-        "pod_memory_request": pod_metrics["total_request"]["memory"],
-        "pod_memory_limit": pod_metrics["total_limit"]["memory"],
-        "metrics_available": node_metrics["metrics_available"],
-    }
-
-
 def scale_deployment(
     api_client, namespace: str, name: str, replicas: int
 ) -> dict:
