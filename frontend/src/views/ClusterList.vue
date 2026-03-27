@@ -176,7 +176,7 @@ async function testConnection(c: Cluster) {
 
 function confirmDelete(c: Cluster) {
   if (confirm(`确定删除集群「${c.display_name || c.name}」？`)) {
-    clusterApi.delete(c.id).then(() => loadClusters()).catch((e) => alert('删除失败'))
+    clusterApi.delete(c.id).then(() => loadClusters()).catch(() => alert('删除失败'))
   }
 }
 

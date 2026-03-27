@@ -695,33 +695,30 @@ def list_pods(api_client, namespace: str | None = None) -> list[dict]:
     return result
 
 
-def get_cluster_metrics(api_client, kubeconfig_content: str = None) -> dict:
-    """获取集群 metrics 汇总信息
+def get_cluster_overview(api_client) -> dict:
+    """获取集群基础统计信息
 
     返回:
-    - pod_stats: Pod 统计（总数、running、pending、failed）
     - node_count: 节点数量
+    - namespace_count: 命名空间数量
+    - pod_stats: Pod 统计（总数、running、pending、failed、succeeded）
     - deployment_count: Deployment 数量
     - statefulset_count: StatefulSet 数量
-    - namespace_count: 命名空间数量
-    - cpu_usage: CPU 使用量 (cores)
-    - memory_usage: 内存使用量 (bytes)
-    - pod_memory_request: Pod 内存请求量 (bytes)
-    - pod_memory_limit: Pod 内存 limit 量 (bytes)
-    - pod_cpu_request: Pod CPU 请求量 (cores)
-    - pod_cpu_limit: Pod CPU limit 量 (cores)
-    - metrics_available: 是否可用 metrics-server
+    - ingress_count: Ingress 数量
+    - apisixroute_count: ApisixRoute 数量
+    - apisixtls_count: ApisixTls 数量
+    - ingressroute_count: Traefik IngressRoute 数量
+    - ingressroutetcp_count: Traefik IngressRouteTCP 数量
+    - ingressrouteudp_count: Traefik IngressRouteUDP 数量
     """
     v1 = client.CoreV1Api(api_client)
     apps_v1 = client.AppsV1Api(api_client)
+    net_v1 = client.NetworkingV1Api(api_client)
+    custom_api = client.CustomObjectsApi(api_client)
 
-    # Pod 统计及资源请求/limit 汇总
+    # Pod 统计
     all_pods = v1.list_pod_for_all_namespaces()
-    pod_stats = {"total": 0, "running": 0, "pending": 0, "failed": 0}
-    pod_memory_request = 0
-    pod_memory_limit = 0
-    pod_cpu_request = 0.0
-    pod_cpu_limit = 0.0
+    pod_stats = {"total": 0, "running": 0, "pending": 0, "failed": 0, "succeeded": 0}
     for pod in all_pods.items:
         pod_stats["total"] += 1
         phase = pod.status.phase if pod.status else "Unknown"
@@ -731,18 +728,8 @@ def get_cluster_metrics(api_client, kubeconfig_content: str = None) -> dict:
             pod_stats["pending"] += 1
         elif phase == "Failed":
             pod_stats["failed"] += 1
-        # 统计 Pod CPU/内存请求和 limit
-        for container in pod.spec.containers:
-            if container.resources.requests:
-                if container.resources.requests.get('cpu'):
-                    pod_cpu_request += _parse_cpu_value(container.resources.requests['cpu'])
-                if container.resources.requests.get('memory'):
-                    pod_memory_request += _parse_resource_value(container.resources.requests['memory'])
-            if container.resources.limits:
-                if container.resources.limits.get('cpu'):
-                    pod_cpu_limit += _parse_cpu_value(container.resources.limits['cpu'])
-                if container.resources.limits.get('memory'):
-                    pod_memory_limit += _parse_resource_value(container.resources.limits['memory'])
+        elif phase == "Succeeded":
+            pod_stats["succeeded"] += 1
 
     # 节点统计
     try:
@@ -771,11 +758,148 @@ def get_cluster_metrics(api_client, kubeconfig_content: str = None) -> dict:
     except Exception:
         namespace_count = 0
 
-    # 从 metrics-server 获取 CPU 和内存使用量（使用 kubectl top）
-    cpu_usage = 0
-    memory_usage = 0
+    # Ingress 统计
+    try:
+        ingresses = net_v1.list_ingress_for_all_namespaces()
+        ingress_count = len(ingresses.items)
+    except Exception:
+        ingress_count = 0
+
+    # ApisixRoute 统计
+    apisixroute_count = 0
+    try:
+        result = custom_api.list_cluster_custom_object(
+            group="apisix.apache.org",
+            version="v2",
+            plural="apisixroutes",
+        )
+        apisixroute_count = len(result.get("items", []))
+    except Exception:
+        try:
+            result = custom_api.list_cluster_custom_object(
+                group="apisix.apache.org",
+                version="v2beta3",
+                plural="apisixroutes",
+            )
+            apisixroute_count = len(result.get("items", []))
+        except Exception:
+            pass
+
+    # ApisixTls 统计
+    apisixtls_count = 0
+    try:
+        result = custom_api.list_cluster_custom_object(
+            group="apisix.apache.org",
+            version="v2",
+            plural="apisixtls",
+        )
+        apisixtls_count = len(result.get("items", []))
+    except Exception:
+        try:
+            result = custom_api.list_cluster_custom_object(
+                group="apisix.apache.org",
+                version="v2beta3",
+                plural="apisixtls",
+            )
+            apisixtls_count = len(result.get("items", []))
+        except Exception:
+            pass
+
+    # Traefik IngressRoute 统计
+    ingressroute_count = 0
+    try:
+        result = custom_api.list_cluster_custom_object(
+            group="traefik.io",
+            version="v1alpha1",
+            plural="ingressroutes",
+        )
+        ingressroute_count = len(result.get("items", []))
+    except Exception:
+        pass
+
+    # Traefik IngressRouteTCP 统计
+    ingressroutetcp_count = 0
+    try:
+        result = custom_api.list_cluster_custom_object(
+            group="traefik.io",
+            version="v1alpha1",
+            plural="ingressroutetcps",
+        )
+        ingressroutetcp_count = len(result.get("items", []))
+    except Exception:
+        pass
+
+    # Traefik IngressRouteUDP 统计
+    ingressrouteudp_count = 0
+    try:
+        result = custom_api.list_cluster_custom_object(
+            group="traefik.io",
+            version="v1alpha1",
+            plural="ingressrouteudps",
+        )
+        ingressrouteudp_count = len(result.get("items", []))
+    except Exception:
+        pass
+
+    return {
+        "node_count": node_count,
+        "namespace_count": namespace_count,
+        "pod_stats": pod_stats,
+        "deployment_count": deployment_count,
+        "statefulset_count": statefulset_count,
+        "ingress_count": ingress_count,
+        "apisixroute_count": apisixroute_count,
+        "apisixtls_count": apisixtls_count,
+        "ingressroute_count": ingressroute_count,
+        "ingressroutetcp_count": ingressroutetcp_count,
+        "ingressrouteudp_count": ingressrouteudp_count,
+    }
+
+
+def get_node_metrics(api_client, kubeconfig_content: str = None) -> dict:
+    """获取节点资源使用量
+
+    返回:
+    - items: 节点列表，每项包含 name、ip、cpu_request、cpu_limit、cpu_usage、memory_request、memory_limit、memory_usage
+    - metrics_available: 是否可用 metrics-server
+    """
+    v1 = client.CoreV1Api(api_client)
+    items = []
     metrics_available = False
     kubeconfig_path = None
+
+    try:
+        nodes = v1.list_node()
+        for node in nodes.items:
+            # 获取节点 IP
+            node_ip = None
+            if node.status.addresses:
+                for addr in node.status.addresses:
+                    if addr.type == "InternalIP":
+                        node_ip = addr.address
+                        break
+
+            item = {
+                "name": node.metadata.name,
+                "ip": node_ip,
+                "cpu_request": 0,
+                "cpu_limit": 0,
+                "cpu_usage": 0,
+                "memory_request": 0,
+                "memory_limit": 0,
+                "memory_usage": 0,
+            }
+            # 获取节点 allocatable 资源（作为 request/capacity）
+            if node.status.allocatable:
+                cpu_alloc = node.status.allocatable.get('cpu')
+                mem_alloc = node.status.allocatable.get('memory')
+                if cpu_alloc:
+                    item["cpu_request"] = _parse_cpu_value(cpu_alloc)
+                if mem_alloc:
+                    item["memory_request"] = _parse_resource_value(mem_alloc)
+            items.append(item)
+    except Exception as e:
+        logger.warning(f"获取节点列表失败: {e}")
 
     if kubeconfig_content:
         try:
@@ -786,44 +910,214 @@ def get_cluster_metrics(api_client, kubeconfig_content: str = None) -> dict:
             env = os.environ.copy()
             env["KUBECONFIG"] = kubeconfig_path
 
-            # 获取 node metrics
             result = subprocess.run(
                 ["kubectl", "top", "nodes", "--no-headers"],
                 capture_output=True, text=True, env=env, timeout=30
             )
             if result.returncode == 0:
                 metrics_available = True
+                node_metrics = {}
                 for line in result.stdout.strip().split('\n'):
                     if line:
                         parts = line.split()
                         # 输出格式: NAME   CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%
-                        if len(parts) >= 4:
+                        if len(parts) >= 5:
+                            name = parts[0]
                             cpu_str = parts[1]
+                            cpu_percent_str = parts[2]
                             mem_str = parts[3]
-                            if 'm' in cpu_str:
-                                cpu_usage += int(cpu_str.replace('m', '')) / 1000
-                            else:
-                                cpu_usage += int(cpu_str)
-                            memory_usage += _parse_resource_value(mem_str)
+                            mem_percent_str = parts[4]
+                            node_metrics[name] = {
+                                "cpu": _parse_cpu_value(cpu_str),
+                                "cpu_percent": float(cpu_percent_str.rstrip('%')),
+                                "memory": _parse_resource_value(mem_str),
+                                "memory_percent": float(mem_percent_str.rstrip('%')),
+                            }
+
+                # 合并节点信息和 metrics
+                for item in items:
+                    name = item["name"]
+                    if name in node_metrics:
+                        item["cpu_usage"] = node_metrics[name].get("cpu", 0)
+                        item["cpu_percent"] = node_metrics[name].get("cpu_percent", 0)
+                        item["memory_usage"] = node_metrics[name].get("memory", 0)
+                        item["memory_percent"] = node_metrics[name].get("memory_percent", 0)
         except Exception as e:
-            logger.warning(f"无法获取 metrics: {e}")
+            logger.warning(f"无法获取节点 metrics: {e}")
         finally:
             if kubeconfig_path:
                 os.unlink(kubeconfig_path)
 
     return {
-        "pod_stats": pod_stats,
-        "node_count": node_count,
-        "deployment_count": deployment_count,
-        "statefulset_count": statefulset_count,
-        "namespace_count": namespace_count,
+        "items": items,
+        "metrics_available": metrics_available,
+    }
+
+
+def get_pod_metrics(api_client, kubeconfig_content: str = None) -> dict:
+    """获取 Pod 资源请求量和使用量汇总
+
+    返回:
+    - total_request: CPU/内存请求量汇总
+    - total_limit: CPU/内存 limit 量汇总
+    - total_usage: CPU/内存实际使用量汇总
+    - items: 每 Pod 明细列表
+    """
+    v1 = client.CoreV1Api(api_client)
+
+    total_cpu_request = 0.0
+    total_cpu_limit = 0.0
+    total_memory_request = 0
+    total_memory_limit = 0
+    total_cpu_usage = 0.0
+    total_memory_usage = 0
+    items = []
+
+    all_pods = v1.list_pod_for_all_namespaces()
+    for pod in all_pods.items:
+        pod_cpu_request = 0.0
+        pod_cpu_limit = 0.0
+        pod_memory_request = 0
+        pod_memory_limit = 0
+
+        containers = pod.spec.containers
+        for container in containers:
+            if container.resources.requests:
+                cpu_req = container.resources.requests.get('cpu')
+                mem_req = container.resources.requests.get('memory')
+                if cpu_req:
+                    val = _parse_cpu_value(cpu_req)
+                    pod_cpu_request += val
+                    total_cpu_request += val
+                if mem_req:
+                    val = _parse_resource_value(mem_req)
+                    pod_memory_request += val
+                    total_memory_request += val
+            if container.resources.limits:
+                cpu_lim = container.resources.limits.get('cpu')
+                mem_lim = container.resources.limits.get('memory')
+                if cpu_lim:
+                    val = _parse_cpu_value(cpu_lim)
+                    pod_cpu_limit += val
+                    total_cpu_limit += val
+                if mem_lim:
+                    val = _parse_resource_value(mem_lim)
+                    pod_memory_limit += val
+                    total_memory_limit += val
+
+        items.append({
+            "name": pod.metadata.name,
+            "namespace": pod.metadata.namespace,
+            "cpu_request": round(pod_cpu_request, 4),
+            "cpu_limit": round(pod_cpu_limit, 4),
+            "memory_request": pod_memory_request,
+            "memory_limit": pod_memory_limit,
+            "cpu_usage": None,
+            "memory_usage": None,
+            "phase": pod.status.phase if pod.status else "Unknown",
+        })
+
+    # 通过 kubectl top pods 获取实际使用量
+    if kubeconfig_content:
+        kubeconfig_path = None
+        try:
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.kubeconfig', delete=False) as f:
+                f.write(kubeconfig_content)
+                kubeconfig_path = f.name
+
+            env = os.environ.copy()
+            env["KUBECONFIG"] = kubeconfig_path
+
+            result = subprocess.run(
+                ["kubectl", "top", "pods", "--all-namespaces", "--no-headers"],
+                capture_output=True, text=True, env=env, timeout=60
+            )
+            if result.returncode == 0:
+                pod_usage_map = {}
+                for line in result.stdout.strip().split('\n'):
+                    if line:
+                        parts = line.split()
+                        # 输出格式: NAMESPACE   NAME   CPU(cores)   MEMORY(bytes)
+                        if len(parts) >= 4:
+                            ns = parts[0]
+                            name = parts[1]
+                            cpu_str = parts[2]
+                            mem_str = parts[3]
+                            key = (ns, name)
+                            pod_usage_map[key] = {
+                                "cpu": _parse_cpu_value(cpu_str),
+                                "memory": _parse_resource_value(mem_str),
+                            }
+
+                # 合并使用量到 items，并汇总
+                for item in items:
+                    key = (item["namespace"], item["name"])
+                    if key in pod_usage_map:
+                        usage = pod_usage_map[key]
+                        item["cpu_usage"] = round(usage["cpu"], 4)
+                        item["memory_usage"] = usage["memory"]
+                        total_cpu_usage += usage["cpu"]
+                        total_memory_usage += usage["memory"]
+        except Exception as e:
+            logger.warning(f"无法获取 Pod metrics: {e}")
+        finally:
+            if kubeconfig_path:
+                os.unlink(kubeconfig_path)
+
+    return {
+        "total_request": {
+            "cpu": round(total_cpu_request, 2),
+            "memory": total_memory_request,
+        },
+        "total_limit": {
+            "cpu": round(total_cpu_limit, 2),
+            "memory": total_memory_limit,
+        },
+        "total_usage": {
+            "cpu": round(total_cpu_usage, 2),
+            "memory": total_memory_usage,
+        },
+        "items": items,
+    }
+
+
+def get_cluster_metrics(api_client, kubeconfig_content: str = None) -> dict:
+    """获取集群 metrics 汇总信息（兼容旧接口）
+
+    返回:
+    - pod_stats: Pod 统计（总数、running、pending、failed）
+    - node_count: 节点数量
+    - deployment_count: Deployment 数量
+    - statefulset_count: StatefulSet 数量
+    - namespace_count: 命名空间数量
+    - cpu_usage: CPU 使用量 (cores)
+    - memory_usage: 内存使用量 (bytes)
+    - pod_memory_request: Pod 内存请求量 (bytes)
+    - pod_memory_limit: Pod 内存 limit 量 (bytes)
+    - pod_cpu_request: Pod CPU 请求量 (cores)
+    - pod_cpu_limit: Pod CPU limit 量 (cores)
+    - metrics_available: 是否可用 metrics-server
+    """
+    overview = get_cluster_overview(api_client)
+    node_metrics = get_node_metrics(api_client, kubeconfig_content)
+    pod_metrics = get_pod_metrics(api_client)
+
+    # 汇总节点使用量
+    cpu_usage = 0
+    memory_usage = 0
+    for node in node_metrics["items"]:
+        cpu_usage += node.get("cpu", 0)
+        memory_usage += node.get("memory", 0)
+
+    return {
+        **overview,
         "cpu_usage": round(cpu_usage, 2),
         "memory_usage": memory_usage,
-        "pod_cpu_request": round(pod_cpu_request, 2),
-        "pod_cpu_limit": round(pod_cpu_limit, 2),
-        "pod_memory_request": pod_memory_request,
-        "pod_memory_limit": pod_memory_limit,
-        "metrics_available": metrics_available,
+        "pod_cpu_request": pod_metrics["total_request"]["cpu"],
+        "pod_cpu_limit": pod_metrics["total_limit"]["cpu"],
+        "pod_memory_request": pod_metrics["total_request"]["memory"],
+        "pod_memory_limit": pod_metrics["total_limit"]["memory"],
+        "metrics_available": node_metrics["metrics_available"],
     }
 
 

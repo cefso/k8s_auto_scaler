@@ -1,105 +1,118 @@
 <template>
   <div class="dashboard">
-    <div v-if="loading" class="empty-state">加载中...</div>
+    <div v-if="loading" class="empty-state">Loading...</div>
     <div v-else-if="error" class="empty-state" style="color: var(--error)">{{ error }}</div>
-    <template v-else-if="metrics">
+    <template v-else>
       <!-- 统计卡片 -->
       <div class="stat-cards">
         <div class="stat-card">
           <div class="stat-label">集群节点</div>
-          <div class="stat-value">{{ metrics.node_count }}</div>
+          <div class="stat-value">{{ overview?.node_count ?? '-' }}</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">命名空间</div>
-          <div class="stat-value">{{ metrics.namespace_count }}</div>
+          <div class="stat-value">{{ overview?.namespace_count ?? '-' }}</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Pod 总数</div>
-          <div class="stat-value">{{ metrics.pod_stats.total }}</div>
+          <div class="stat-value">{{ overview?.pod_stats?.total ?? '-' }}</div>
         </div>
         <div class="stat-card stat-card-running">
           <div class="stat-label">Pod 运行中</div>
-          <div class="stat-value">{{ metrics.pod_stats.running }}</div>
+          <div class="stat-value">{{ overview?.pod_stats?.running ?? '-' }}</div>
         </div>
         <div class="stat-card stat-card-pending">
           <div class="stat-label">Pod 等待中</div>
-          <div class="stat-value">{{ metrics.pod_stats.pending }}</div>
+          <div class="stat-value">{{ overview?.pod_stats?.pending ?? '-' }}</div>
         </div>
         <div class="stat-card stat-card-failed">
           <div class="stat-label">Pod 异常</div>
-          <div class="stat-value">{{ metrics.pod_stats.failed }}</div>
+          <div class="stat-value">{{ overview?.pod_stats?.failed ?? '-' }}</div>
+        </div>
+        <div class="stat-card stat-card-succeeded">
+          <div class="stat-label">Pod 完成</div>
+          <div class="stat-value">{{ overview?.pod_stats?.succeeded ?? '-' }}</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">Deployment</div>
-          <div class="stat-value">{{ metrics.deployment_count }}</div>
+          <div class="stat-value">{{ overview?.deployment_count ?? '-' }}</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">StatefulSet</div>
-          <div class="stat-value">{{ metrics.statefulset_count }}</div>
+          <div class="stat-value">{{ overview?.statefulset_count ?? '-' }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Ingress</div>
+          <div class="stat-value">{{ overview?.ingress_count ?? '-' }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">ApisixRoute</div>
+          <div class="stat-value">{{ overview?.apisixroute_count ?? '-' }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">ApisixTls</div>
+          <div class="stat-value">{{ overview?.apisixtls_count ?? '-' }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">IngressRoute</div>
+          <div class="stat-value">{{ overview?.ingressroute_count ?? '-' }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">IngressRouteTCP</div>
+          <div class="stat-value">{{ overview?.ingressroutetcp_count ?? '-' }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">IngressRouteUDP</div>
+          <div class="stat-value">{{ overview?.ingressrouteudp_count ?? '-' }}</div>
         </div>
       </div>
 
-      <!-- 资源使用量 -->
+      <!-- Pod Resources -->
       <div class="card" style="margin-top: 1.5rem">
         <div class="card-header">
-          <span class="card-title">资源使用量</span>
-          <span v-if="!metrics.metrics_available" class="card-badge warning">metrics-server 未安装或不可用</span>
+          <span class="card-title">Pod 资源汇总</span>
+          <span v-if="!podMetrics?.total_usage" class="card-badge warning">metrics-server not available, usage data unavailable</span>
         </div>
         <div class="card-body">
-          <div class="resource-metrics">
-            <div class="metric-item">
-              <div class="metric-header">
-                <span class="metric-label">节点 CPU 使用</span>
-                <span class="metric-value">{{ metrics.cpu_usage }} Cores</span>
+          <div class="pod-resource-summary">
+            <div class="resource-column">
+              <div class="resource-column-header">CPU</div>
+              <div class="resource-row">
+                <span class="resource-label">Request</span>
+                <span class="resource-value">{{ podMetrics?.total_request?.cpu ?? '-' }} Cores</span>
+              </div>
+              <div class="resource-row">
+                <span class="resource-label">Limit</span>
+                <span class="resource-value">{{ podMetrics?.total_limit?.cpu ?? '-' }} Cores</span>
+              </div>
+              <div class="resource-row">
+                <span class="resource-label">Usage</span>
+                <span class="resource-value" :class="{ 'text-muted': !podMetrics?.total_usage?.cpu }">
+                  {{ podMetrics?.total_usage?.cpu ? podMetrics.total_usage.cpu + ' Cores' : '-' }}
+                </span>
               </div>
             </div>
-            <div class="metric-item">
-              <div class="metric-header">
-                <span class="metric-label">节点内存 使用</span>
-                <span class="metric-value">{{ formatBytes(metrics.memory_usage) }}</span>
+            <div class="resource-column">
+              <div class="resource-column-header">Memory</div>
+              <div class="resource-row">
+                <span class="resource-label">Request</span>
+                <span class="resource-value">{{ formatBytes(podMetrics?.total_request?.memory) }}</span>
               </div>
-            </div>
-          </div>
-          <div v-if="!metrics.metrics_available" class="empty-state" style="margin-top: 1rem">
-            请确保集群已安装 metrics-server，执行 <code>kubectl top nodes</code> 验证
-          </div>
-        </div>
-      </div>
-
-      <!-- Pod 资源请求量 -->
-      <div class="card" style="margin-top: 1.5rem">
-        <div class="card-header">
-          <span class="card-title">Pod 资源请求量</span>
-        </div>
-        <div class="card-body">
-          <div class="resource-metrics">
-            <div class="metric-item">
-              <div class="metric-header">
-                <span class="metric-label">CPU 请求量</span>
-                <span class="metric-value">{{ metrics.pod_cpu_request }} Cores</span>
+              <div class="resource-row">
+                <span class="resource-label">Limit</span>
+                <span class="resource-value">{{ formatBytes(podMetrics?.total_limit?.memory) }}</span>
               </div>
-            </div>
-            <div class="metric-item">
-              <div class="metric-header">
-                <span class="metric-label">CPU Limit 量</span>
-                <span class="metric-value">{{ metrics.pod_cpu_limit }} Cores</span>
-              </div>
-            </div>
-            <div class="metric-item">
-              <div class="metric-header">
-                <span class="metric-label">内存 请求量</span>
-                <span class="metric-value">{{ formatBytes(metrics.pod_memory_request) }}</span>
-              </div>
-            </div>
-            <div class="metric-item">
-              <div class="metric-header">
-                <span class="metric-label">内存 Limit 量</span>
-                <span class="metric-value">{{ formatBytes(metrics.pod_memory_limit) }}</span>
+              <div class="resource-row">
+                <span class="resource-label">Usage</span>
+                <span class="resource-value" :class="{ 'text-muted': !podMetrics?.total_usage?.memory }">
+                  {{ formatBytes(podMetrics?.total_usage?.memory) }}
+                </span>
               </div>
             </div>
           </div>
         </div>
       </div>
+
     </template>
   </div>
 </template>
@@ -111,28 +124,47 @@ const props = defineProps<{
   clusterId: number
 }>()
 
-const metrics = ref<any>(null)
+const overview = ref<any>(null)
+const podMetrics = ref<any>(null)
 const loading = ref(true)
 const error = ref('')
 
-async function loadMetrics() {
+async function loadOverview() {
+  try {
+    const { resourceApi } = await import('@/api')
+    const res = await resourceApi.metricsOverview(props.clusterId)
+    overview.value = res.data
+  } catch (e: any) {
+    throw new Error(e.response?.data?.detail || e.message || 'Failed to load overview')
+  }
+}
+
+async function loadPodMetrics() {
+  try {
+    const { resourceApi } = await import('@/api')
+    const res = await resourceApi.metricsPods(props.clusterId)
+    podMetrics.value = res.data
+  } catch (e: any) {
+    podMetrics.value = { items: [], total_request: {}, total_limit: {} }
+  }
+}
+
+async function loadAll() {
   loading.value = true
   error.value = ''
   try {
-    const { resourceApi } = await import('@/api')
-    const res = await resourceApi.metrics(props.clusterId)
-    metrics.value = res.data
+    await Promise.all([loadOverview(), loadPodMetrics()])
   } catch (e: any) {
-    error.value = e.response?.data?.detail || e.message || '加载失败'
+    error.value = e.message || 'Load failed'
   } finally {
     loading.value = false
   }
 }
 
-onMounted(loadMetrics)
+onMounted(loadAll)
 
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B'
+function formatBytes(bytes: number | undefined): string {
+  if (bytes === undefined || bytes === null || bytes === 0) return '-'
   const k = 1024
   const sizes = ['B', 'KB', 'MB', 'GB', 'TB']
   const i = Math.floor(Math.log(bytes) / Math.log(k))
@@ -165,13 +197,16 @@ function formatBytes(bytes: number): string {
 .stat-card-failed {
   border-color: var(--error);
 }
+.stat-card-succeeded {
+  border-color: var(--success);
+}
 .stat-label {
   font-size: 0.8rem;
   color: var(--text-muted);
   margin-bottom: 0.5rem;
 }
 .stat-value {
-  font-size: 2rem;
+  font-size: 1.5rem;
   font-weight: 600;
   font-family: var(--font-mono);
 }
@@ -185,25 +220,70 @@ function formatBytes(bytes: number): string {
   background: rgba(230, 162, 60, 0.15);
   color: var(--warning);
 }
-.resource-metrics {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 1.5rem;
+.card-hint {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin-left: auto;
 }
-.metric-item {
-  padding: 0.5rem 0;
+.pod-resource-summary {
+  display: flex;
+  gap: 2rem;
 }
-.metric-header {
+.resource-column {
+  flex: 1;
+  min-width: 200px;
+}
+.resource-column-header {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.resource-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  padding: 0.4rem 0;
 }
-.metric-label {
+.resource-label {
   font-size: 0.85rem;
   color: var(--text-muted);
 }
-.metric-value {
+.resource-value {
   font-family: var(--font-mono);
   font-size: 0.85rem;
+}
+.table-wrap {
+  overflow-x: auto;
+}
+.node-table-wrap {
+  overflow-x: auto;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+th, td {
+  padding: 0.6rem 0.75rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+th {
+  font-weight: 500;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+.pod-name {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+.text-muted {
+  color: var(--text-muted);
 }
 </style>

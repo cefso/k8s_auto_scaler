@@ -22,8 +22,9 @@
 
       <!-- Dashboard 概览 -->
       <Dashboard v-if="activeTab === 'dashboard'" :cluster-id="clusterId" />
+      <NodeMetrics v-if="activeTab === 'nodes'" :cluster-id="clusterId" />
 
-      <div class="card">
+      <div v-if="activeTab !== 'nodes' && activeTab !== 'dashboard'" class="card">
         <div class="card-header">
           <span class="card-title">{{ tabLabel }}</span>
         </div>
@@ -100,6 +101,7 @@ import { useRoute } from 'vue-router'
 import { clusterApi, resourceApi } from '@/api'
 import type { Cluster } from '@/api'
 import Dashboard from './Dashboard.vue'
+import NodeMetrics from './NodeMetrics.vue'
 
 const route = useRoute()
 const clusterId = computed(() => Number(route.params.id))
@@ -110,6 +112,7 @@ const connectionOk = ref(false)
 
 const tabs = [
   { key: 'dashboard', label: '概览' },
+  { key: 'nodes', label: '节点' },
   { key: 'helm', label: 'Helm' },
   { key: 'deployments', label: 'Deployment' },
   { key: 'statefulsets', label: 'StatefulSet' },

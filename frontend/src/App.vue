@@ -38,13 +38,24 @@
         </section>
 
         <section v-if="currentClusterId && onClusterPage" class="sidebar-section">
-          <nav class="sidebar-nav">
+          <h3 class="sidebar-title collapsible" @click="toggleSection('overview')">
+            <span class="collapse-arrow" :class="{ collapsed: expandedSection !== 'overview' }">▸</span>
+            概览
+          </h3>
+          <nav v-show="expandedSection === 'overview'" class="sidebar-nav">
             <router-link
               :to="`/cluster/${currentClusterId}?tab=dashboard`"
               :class="['sidebar-item', { active: currentTab === 'dashboard' }]"
             >
               <span class="sidebar-icon">▪</span>
               概览
+            </router-link>
+            <router-link
+              :to="`/cluster/${currentClusterId}?tab=nodes`"
+              :class="['sidebar-item', { active: currentTab === 'nodes' }]"
+            >
+              <span class="sidebar-icon">▪</span>
+              节点
             </router-link>
           </nav>
         </section>
@@ -68,7 +79,7 @@
         <section v-if="currentClusterId && onClusterPage" class="sidebar-section">
           <h3 class="sidebar-title collapsible" @click="toggleSection('network')">
             <span class="collapse-arrow" :class="{ collapsed: expandedSection !== 'network' }">▸</span>
-            网络
+            网络资源
           </h3>
           <nav v-show="expandedSection === 'network'" class="sidebar-nav">
             <router-link
@@ -119,7 +130,7 @@
         <section v-if="currentClusterId && onClusterPage" class="sidebar-section">
           <h3 class="sidebar-title collapsible" @click="toggleSection('config')">
             <span class="collapse-arrow" :class="{ collapsed: expandedSection !== 'config' }">▸</span>
-            配置管理
+            配置与密钥
           </h3>
           <nav v-show="expandedSection === 'config'" class="sidebar-nav">
             <router-link
@@ -137,7 +148,7 @@
         <section v-if="currentClusterId && onClusterPage" class="sidebar-section">
           <h3 class="sidebar-title collapsible" @click="toggleSection('app')">
             <span class="collapse-arrow" :class="{ collapsed: expandedSection !== 'app' }">▸</span>
-            应用
+            Helm 应用
           </h3>
           <nav v-show="expandedSection === 'app'" class="sidebar-nav">
             <router-link
@@ -184,7 +195,7 @@ const router = useRouter()
 const clusterStore = useClusterStore()
 
 // 侧边栏折叠状态（展开的栏目 key）
-const expandedSection = ref<string>('workload')
+const expandedSection = ref<string | null>('overview')
 
 function toggleSection(key: string) {
   if (expandedSection.value === key) {

@@ -17,6 +17,9 @@ from app.services.k8s_service import (
     get_kubeconfig_content_for_cluster,
     get_resource_yaml,
     get_cluster_metrics,
+    get_cluster_overview,
+    get_node_metrics,
+    get_pod_metrics,
     list_namespaces,
     list_deployments,
     list_statefulsets,
@@ -50,12 +53,41 @@ async def _get_cluster(db: AsyncSession, cluster_id: int) -> Cluster:
 
 @router.get("/{cluster_id}/metrics")
 async def get_cluster_metrics_endpoint(cluster_id: int, db: AsyncSession = Depends(get_db)):
-    """获取集群 metrics 汇总（Pod 统计、资源使用量等）"""
+    """获取集群 metrics 汇总（Pod 统计、资源使用量等）- 兼容旧接口"""
     cluster = await _get_cluster(db, cluster_id)
     api_client = get_api_client_for_cluster(cluster)
     kubeconfig_content = get_kubeconfig_content_for_cluster(cluster)
     metrics = get_cluster_metrics(api_client, kubeconfig_content)
     return {"cluster_id": cluster_id, **metrics}
+
+
+@router.get("/{cluster_id}/metrics/overview")
+async def get_cluster_overview_endpoint(cluster_id: int, db: AsyncSession = Depends(get_db)):
+    """获取集群基础统计信息（节点数、命名空间数、Pod 统计、Deployment/StatefulSet 数量）"""
+    cluster = await _get_cluster(db, cluster_id)
+    api_client = get_api_client_for_cluster(cluster)
+    overview = get_cluster_overview(api_client)
+    return {"cluster_id": cluster_id, **overview}
+
+
+@router.get("/{cluster_id}/metrics/nodes")
+async def get_node_metrics_endpoint(cluster_id: int, db: AsyncSession = Depends(get_db)):
+    """获取节点资源使用量（需集群安装 metrics-server）"""
+    cluster = await _get_cluster(db, cluster_id)
+    api_client = get_api_client_for_cluster(cluster)
+    kubeconfig_content = get_kubeconfig_content_for_cluster(cluster)
+    result = get_node_metrics(api_client, kubeconfig_content)
+    return {"cluster_id": cluster_id, **result}
+
+
+@router.get("/{cluster_id}/metrics/pods")
+async def get_pod_metrics_endpoint(cluster_id: int, db: AsyncSession = Depends(get_db)):
+    """获取 Pod 资源请求量/limit 量/实际使用量汇总"""
+    cluster = await _get_cluster(db, cluster_id)
+    api_client = get_api_client_for_cluster(cluster)
+    kubeconfig_content = get_kubeconfig_content_for_cluster(cluster)
+    result = get_pod_metrics(api_client, kubeconfig_content)
+    return {"cluster_id": cluster_id, **result}
 
 
 @router.get("/{cluster_id}/namespaces")
