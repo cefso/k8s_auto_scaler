@@ -48,7 +48,6 @@ export const clusterApi = {
 }
 
 export const resourceApi = {
-  metrics: (clusterId: number) => api.get(`/resources/${clusterId}/metrics`),
   metricsOverview: (clusterId: number) => api.get(`/resources/${clusterId}/metrics/overview`),
   metricsNodes: (clusterId: number) => api.get(`/resources/${clusterId}/metrics/nodes`),
   metricsPods: (clusterId: number) => api.get(`/resources/${clusterId}/metrics/pods`),

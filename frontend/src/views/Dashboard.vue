@@ -220,11 +220,6 @@ function formatBytes(bytes: number | undefined): string {
   background: rgba(230, 162, 60, 0.15);
   color: var(--warning);
 }
-.card-hint {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  margin-left: auto;
-}
 .pod-resource-summary {
   display: flex;
   gap: 2rem;
@@ -253,35 +248,6 @@ function formatBytes(bytes: number | undefined): string {
 .resource-value {
   font-family: var(--font-mono);
   font-size: 0.85rem;
-}
-.table-wrap {
-  overflow-x: auto;
-}
-.node-table-wrap {
-  overflow-x: auto;
-}
-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 0.85rem;
-}
-th, td {
-  padding: 0.6rem 0.75rem;
-  text-align: left;
-  border-bottom: 1px solid var(--border);
-  white-space: nowrap;
-}
-th {
-  font-weight: 500;
-  color: var(--text-muted);
-  font-size: 0.8rem;
-}
-.pod-name {
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-family: var(--font-mono);
-  font-size: 0.8rem;
 }
 .text-muted {
   color: var(--text-muted);
