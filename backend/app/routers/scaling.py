@@ -24,6 +24,7 @@ from app.services.k8s_service import (
     scale_deployment,
     scale_statefulset,
 )
+from app.routers.audit import create_audit_log
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/scaling", tags=["scaling"])
@@ -62,6 +63,21 @@ async def create_schedule(
     await db.refresh(schedule)
     if schedule.is_enabled:
         add_schedule_to_scheduler(schedule)
+
+    # 审计日志
+    await create_audit_log(
+        action="create",
+        resource_type="ScalingSchedule",
+        resource_name=f"{schedule.namespace}/{schedule.resource_name}",
+        namespace=schedule.namespace,
+        cluster_id=schedule.cluster_id,
+        details={
+            "schedule_id": schedule.id,
+            "target_replicas": schedule.target_replicas,
+            "cron_expression": schedule.cron_expression,
+        },
+    )
+
     logger.info(f"定时任务创建成功: id={schedule.id}, cluster={cluster.name}, "
                  f"resource={schedule.namespace}/{schedule.resource_name}, "
                  f"replicas={schedule.target_replicas}, cron={schedule.cron_expression}")
@@ -90,6 +106,16 @@ async def update_schedule(
     if schedule.is_enabled:
         add_schedule_to_scheduler(schedule)
 
+    # 审计日志
+    await create_audit_log(
+        action="update",
+        resource_type="ScalingSchedule",
+        resource_name=f"{schedule.namespace}/{schedule.resource_name}",
+        namespace=schedule.namespace,
+        cluster_id=schedule.cluster_id,
+        details={"schedule_id": schedule.id, "updates": data.model_dump(exclude_unset=True)},
+    )
+
     logger.info(f"定时任务更新成功: id={schedule.id}, resource={schedule.namespace}/{schedule.resource_name}")
     return schedule
 
@@ -107,9 +133,26 @@ async def delete_schedule(
         raise HTTPException(status_code=404, detail="任务不存在")
 
     sid = schedule.id
+    schedule_info = {
+        "schedule_id": sid,
+        "namespace": schedule.namespace,
+        "resource_name": schedule.resource_name,
+        "cluster_id": schedule.cluster_id,
+    }
     await db.delete(schedule)
     await db.commit()
     remove_schedule_from_scheduler(sid)
+
+    # 审计日志
+    await create_audit_log(
+        action="delete",
+        resource_type="ScalingSchedule",
+        resource_name=f"{schedule_info['namespace']}/{schedule_info['resource_name']}",
+        namespace=schedule_info["namespace"],
+        cluster_id=schedule_info["cluster_id"],
+        details=schedule_info,
+    )
+
     logger.info(f"定时任务已删除: id={sid}")
     return {"message": "删除成功"}
 
@@ -146,6 +189,16 @@ async def scale_resource(
         logger.warning(f"立即扩缩容失败: cluster={cluster.name}, "
                        f"resource={namespace}/{resource_name}, 原因: {result['message']}")
         raise HTTPException(status_code=400, detail=result["message"])
+
+    # 审计日志
+    await create_audit_log(
+        action="scale",
+        resource_type=resource_type,
+        resource_name=resource_name,
+        namespace=namespace,
+        cluster_id=cluster_id,
+        details={"replicas": replicas},
+    )
 
     logger.info(f"立即扩缩容成功: cluster={cluster.name}, "
                 f"resource={namespace}/{resource_name}, replicas={replicas}")

@@ -3,6 +3,7 @@ SQLAlchemy 数据库模型
 
 - Cluster: 集群配置，kubeconfig 以 Fernet 加密存储在 kubeconfig_encrypted
 - ScalingSchedule: 定时扩缩容任务，关联 Cluster
+- AuditLog: 操作审计日志
 """
 from datetime import datetime
 from sqlalchemy import String, Integer, DateTime, Text, ForeignKey, Boolean
@@ -52,5 +53,20 @@ class ScalingSchedule(Base):
     
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     cluster: Mapped["Cluster"] = relationship("Cluster", back_populates="scaling_schedules")
+
+
+class AuditLog(Base):
+    """操作审计日志，记录所有通过 Dashboard 执行的写操作。"""
+    __tablename__ = "audit_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    operator: Mapped[str] = mapped_column(String(100), default="admin")
+    action: Mapped[str] = mapped_column(String(50), nullable=False)  # scale, delete, update, create
+    resource_type: Mapped[str] = mapped_column(String(50), nullable=False)  # Deployment, Pod, etc.
+    resource_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    namespace: Mapped[str] = mapped_column(String(255), nullable=True)
+    cluster_id: Mapped[int] = mapped_column(Integer, ForeignKey("clusters.id"), nullable=True)
+    details: Mapped[str] = mapped_column(Text, nullable=True)  # JSON 变更详情
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

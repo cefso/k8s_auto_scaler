@@ -58,6 +58,7 @@
               <th>Memory Request</th>
               <th>Memory Limit</th>
               <th>Memory Usage</th>
+              <th>操作</th>
             </tr>
           </thead>
           <tbody>
@@ -75,6 +76,12 @@
               <td>{{ formatBytes(pod.memory_limit) }}</td>
               <td :class="getUsageClass(pod.memory_usage, pod.memory_limit)">
                 {{ pod.memory_usage != null ? formatBytes(pod.memory_usage) : '-' }}
+              </td>
+              <td>
+                <div class="action-buttons">
+                  <button class="btn btn-sm btn-secondary" @click="openLogViewer(pod)">日志</button>
+                  <button class="btn btn-sm btn-secondary" @click="openPodEvents(pod)">事件</button>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -98,6 +105,53 @@
         <pre v-else class="yaml-content">{{ displayYaml }}</pre>
       </div>
     </div>
+
+    <!-- Pod 事件弹窗 -->
+    <div v-if="showEventsModal" class="modal-overlay" @click.self="showEventsModal = false">
+      <div class="modal modal-events">
+        <div class="modal-header">
+          <h2>Pod 事件 - {{ eventsPodName }}</h2>
+          <button class="btn btn-sm btn-secondary" @click="showEventsModal = false">关闭</button>
+        </div>
+        <div v-if="eventsLoading" class="empty-state">加载中...</div>
+        <div v-else-if="!podEvents.length" class="empty-state">暂无事件</div>
+        <div v-else class="events-list">
+          <div
+            v-for="(event, index) in podEvents"
+            :key="index"
+            class="event-item"
+            :class="{ 'event-warning': event.type === 'Warning' }"
+          >
+            <div class="event-header">
+              <span class="event-type" :class="event.type === 'Warning' ? 'type-warning' : 'type-normal'">
+                {{ event.type }}
+              </span>
+              <span class="event-reason">{{ event.reason }}</span>
+              <span class="event-time">{{ event.last_timestamp || event.age }}</span>
+            </div>
+            <div class="event-message">{{ event.message }}</div>
+            <div class="event-source">来源: {{ event.source || '-' }}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 日志查看弹窗 -->
+    <div v-if="showLogViewer" class="modal-overlay" @click.self="showLogViewer = false">
+      <div class="modal modal-log">
+        <div class="modal-header">
+          <h2>日志查看</h2>
+          <button class="btn btn-sm btn-secondary" @click="showLogViewer = false">关闭</button>
+        </div>
+        <LogViewer
+          v-if="showLogViewer"
+          :cluster-id="clusterId"
+          :namespace="logPodNamespace"
+          :pod-name="logPodName"
+          @close="showLogViewer = false"
+        />
+      </div>
+    </div>
   </div>
 </template>
 
@@ -105,6 +159,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { resourceApi } from '@/api'
+import LogViewer from '@/components/LogViewer.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -124,6 +179,18 @@ const yamlContent = ref('')
 const yamlRawContent = ref('')
 const yamlLoading = ref(false)
 const showCollapsedFields = ref(false)
+
+// 日志相关
+const showLogViewer = ref(false)
+const logPodName = ref('')
+const logPodNamespace = ref('')
+
+// 事件相关
+const showEventsModal = ref(false)
+const eventsPodName = ref('')
+const eventsPodNamespace = ref('')
+const podEvents = ref<any[]>([])
+const eventsLoading = ref(false)
 
 const hasCollapsedFields = computed(() => {
   const raw = yamlRawContent.value
@@ -180,6 +247,33 @@ async function loadPods() {
 
 async function refreshPods() {
   await loadPods()
+}
+
+function openLogViewer(pod: any) {
+  logPodName.value = pod.name
+  logPodNamespace.value = namespace.value
+  showLogViewer.value = true
+}
+
+async function openPodEvents(pod: any) {
+  eventsPodName.value = pod.name
+  eventsPodNamespace.value = namespace.value
+  showEventsModal.value = true
+  eventsLoading.value = true
+  podEvents.value = []
+  try {
+    const res = await resourceApi.getPodEvents(
+      clusterId.value,
+      namespace.value,
+      pod.name
+    )
+    podEvents.value = res.data.items || []
+  } catch (e: any) {
+    console.error('获取 Pod 事件失败:', e)
+    podEvents.value = []
+  } finally {
+    eventsLoading.value = false
+  }
 }
 
 async function viewYaml() {
@@ -357,6 +451,79 @@ onMounted(() => {
   word-break: break-all;
   max-height: 60vh;
   margin: 0;
+}
+.modal-log {
+  max-width: 95vw;
+  width: 1200px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem;
+}
+.modal-events {
+  max-width: 90vw;
+  width: 800px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+.events-list {
+  flex: 1;
+  overflow: auto;
+}
+.event-item {
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card);
+}
+.event-item:last-child {
+  border-bottom: none;
+}
+.event-item.event-warning {
+  border-left: 3px solid var(--error);
+  background: rgba(239, 68, 68, 0.05);
+}
+.event-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.event-type {
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+.event-type.type-normal {
+  background: var(--success);
+  color: white;
+}
+.event-type.type-warning {
+  background: var(--error);
+  color: white;
+}
+.event-reason {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+.event-time {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+.event-message {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: 0.25rem;
+  word-break: break-all;
+}
+.event-source {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+.action-buttons {
+  display: flex;
+  gap: 0.35rem;
 }
 .usage-low {
   color: var(--success);

@@ -113,6 +113,48 @@
         </div>
       </div>
 
+      <!-- Top N Pods -->
+      <div class="top-pods-section" style="margin-top: 1.5rem">
+        <div class="top-pods-grid">
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">CPU 消耗 Top 5 Pods</span>
+            </div>
+            <div class="card-body">
+              <div v-if="topPodsLoading" class="empty-state">加载中...</div>
+              <div v-else-if="!topPods?.cpu_top?.length" class="empty-state">暂无数据</div>
+              <div v-else class="top-pods-list">
+                <div v-for="(pod, index) in topPods.cpu_top" :key="pod.name + pod.namespace" class="top-pod-item">
+                  <span class="top-pod-rank" :class="'rank-' + (index + 1)">{{ index + 1 }}</span>
+                  <div class="top-pod-info">
+                    <span class="top-pod-name">{{ pod.namespace }}/{{ pod.name }}</span>
+                    <span class="top-pod-usage">{{ pod.cpu_usage != null ? pod.cpu_usage + ' Cores' : '-' }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">内存消耗 Top 5 Pods</span>
+            </div>
+            <div class="card-body">
+              <div v-if="topPodsLoading" class="empty-state">加载中...</div>
+              <div v-else-if="!topPods?.memory_top?.length" class="empty-state">暂无数据</div>
+              <div v-else class="top-pods-list">
+                <div v-for="(pod, index) in topPods.memory_top" :key="pod.name + pod.namespace" class="top-pod-item">
+                  <span class="top-pod-rank" :class="'rank-' + (index + 1)">{{ index + 1 }}</span>
+                  <div class="top-pod-info">
+                    <span class="top-pod-name">{{ pod.namespace }}/{{ pod.name }}</span>
+                    <span class="top-pod-usage">{{ pod.memory_usage != null ? formatBytes(pod.memory_usage) : '-' }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Events -->
       <div class="card" style="margin-top: 1.5rem">
         <div class="card-header">
@@ -163,8 +205,10 @@ const props = defineProps<{
 
 const overview = ref<any>(null)
 const podMetrics = ref<any>(null)
+const topPods = ref<any>(null)
 const events = ref<any[]>([])
 const eventsLoading = ref(false)
+const topPodsLoading = ref(false)
 const loading = ref(true)
 const error = ref('')
 
@@ -201,11 +245,24 @@ async function loadEvents() {
   }
 }
 
+async function loadTopPods() {
+  topPodsLoading.value = true
+  try {
+    const { analysisApi } = await import('@/api')
+    const res = await analysisApi.getTopPods(props.clusterId, 5, 'cpu')
+    topPods.value = res.data
+  } catch (e: any) {
+    topPods.value = { cpu_top: [], memory_top: [] }
+  } finally {
+    topPodsLoading.value = false
+  }
+}
+
 async function loadAll() {
   loading.value = true
   error.value = ''
   try {
-    await Promise.all([loadOverview(), loadPodMetrics(), loadEvents()])
+    await Promise.all([loadOverview(), loadPodMetrics(), loadEvents(), loadTopPods()])
   } catch (e: any) {
     error.value = e.message || 'Load failed'
   } finally {
@@ -329,6 +386,69 @@ function formatBytes(bytes: number | undefined): string {
   max-width: 300px;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.top-pods-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+.top-pods-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.top-pod-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  background: var(--bg-dark);
+  border-radius: 6px;
+}
+.top-pod-rank {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: var(--border);
+  color: var(--text-secondary);
+}
+.top-pod-rank.rank-1 {
+  background: #ffd700;
+  color: #000;
+}
+.top-pod-rank.rank-2 {
+  background: #c0c0c0;
+  color: #000;
+}
+.top-pod-rank.rank-3 {
+  background: #cd7f32;
+  color: #fff;
+}
+.top-pod-info {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+.top-pod-name {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.top-pod-usage {
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-primary);
   white-space: nowrap;
 }
 </style>

@@ -1,14 +1,40 @@
 <template>
   <div class="app">
     <header class="header">
-      <router-link to="/" class="logo">
-        <span class="logo-icon">⎈</span>
-        <span class="logo-text">K8s Auto Scaler</span>
-      </router-link>
-      <nav class="nav">
-        <router-link to="/" class="nav-link">集群管理</router-link>
-        <router-link to="/schedules" class="nav-link">定时扩缩容</router-link>
-      </nav>
+      <div class="header-left">
+        <router-link to="/" class="logo">
+          <span class="logo-icon">⎈</span>
+          <span class="logo-text">K8s Auto Scaler</span>
+        </router-link>
+        <nav class="nav">
+          <router-link to="/" class="nav-link">集群管理</router-link>
+          <router-link to="/schedules" class="nav-link">定时扩缩容</router-link>
+          <router-link to="/audit" class="nav-link">操作审计</router-link>
+        </nav>
+      </div>
+      <!-- 全局搜索 -->
+      <div v-if="currentClusterId" class="global-search">
+        <input
+          v-model="searchKeyword"
+          type="text"
+          class="search-input"
+          placeholder="搜索资源..."
+          @keyup.enter="doSearch"
+        />
+        <button class="btn btn-sm btn-secondary" @click="doSearch">搜索</button>
+        <!-- 搜索结果下拉 -->
+        <div v-if="searchResults.length > 0" class="search-results">
+          <div
+            v-for="item in searchResults"
+            :key="item.type + item.name + item.namespace"
+            class="search-result-item"
+            @click="goToResource(item)"
+          >
+            <span class="result-type">{{ item.type }}</span>
+            <span class="result-name">{{ item.namespace }}/{{ item.name }}</span>
+          </div>
+        </div>
+      </div>
     </header>
 
     <div class="layout">
@@ -261,6 +287,54 @@ const onSchedulePage = computed(() => route.path === '/schedules')
 const onWorkloadDetailPage = computed(() => route.path.includes('/workload'))
 
 const currentTab = computed(() => route.query.tab as string || 'dashboard')
+
+// 全局搜索
+const searchKeyword = ref('')
+const searchResults = ref<any[]>([])
+const searchLoading = ref(false)
+
+async function doSearch() {
+  if (!searchKeyword.value.trim()) {
+    searchResults.value = []
+    return
+  }
+  if (!currentClusterId.value) return
+
+  searchLoading.value = true
+  try {
+    const { searchApi } = await import('@/api')
+    const res = await searchApi.globalSearch(currentClusterId.value, searchKeyword.value)
+    searchResults.value = res.data.items || []
+  } catch (e) {
+    console.error('搜索失败:', e)
+    searchResults.value = []
+  } finally {
+    searchLoading.value = false
+  }
+}
+
+function goToResource(item: any) {
+  const typeMap: Record<string, string> = {
+    Pod: 'pods',
+    Deployment: 'deployments',
+    StatefulSet: 'statefulsets',
+    Service: 'services',
+    Ingress: 'ingresses',
+    ConfigMap: 'configmaps',
+    Secret: 'secrets',
+    ApisixRoute: 'apisixroutes',
+    ApisixTls: 'apisixtlses',
+    IngressRoute: 'ingressroutes',
+    IngressRouteTCP: 'ingressroutetcps',
+    IngressRouteUDP: 'ingressrouteudps',
+  }
+  const tab = typeMap[item.type]
+  if (tab) {
+    router.push(`/cluster/${currentClusterId.value}?tab=${tab}`)
+    searchResults.value = []
+    searchKeyword.value = ''
+  }
+}
 
 watch(
   () => route.path,

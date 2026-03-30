@@ -13,7 +13,7 @@ from sqlalchemy import select
 from app.config import settings
 from app.database import init_db, migrate_kubeconfig_to_encrypted, AsyncSessionLocal
 from app.models import Cluster, ScalingSchedule
-from app.routers import clusters, resources, scaling
+from app.routers import clusters, resources, scaling, logs, analysis, batch_ops, search, audit
 from app.scheduler import scheduler, add_schedule_to_scheduler
 
 logging.basicConfig(
@@ -66,6 +66,11 @@ app.add_middleware(
 app.include_router(clusters.router)
 app.include_router(resources.router)
 app.include_router(scaling.router)
+app.include_router(logs.router)
+app.include_router(analysis.router)
+app.include_router(batch_ops.router)
+app.include_router(search.router)
+app.include_router(audit.router)
 
 
 @app.get("/")

@@ -25,6 +25,7 @@ from app.services.k8s_service import (
     list_rollouts,
     list_pods,
     list_events,
+    list_pod_events,
     list_services,
     list_ingresses,
     list_apisixroutes,
@@ -37,6 +38,7 @@ from app.services.k8s_service import (
     list_traefikingresstcps,
     list_traefikingressudps,
     get_workload_pods,
+    get_top_pods,
 )
 
 logger = logging.getLogger(__name__)
@@ -344,4 +346,41 @@ async def get_workload_pods_endpoint(
     api_client = get_api_client_for_cluster(cluster)
     kubeconfig_content = get_kubeconfig_content_for_cluster(cluster)
     result = get_workload_pods(api_client, namespace, workload_kind, workload_name, kubeconfig_content)
+    return {"cluster_id": cluster_id, **result}
+
+
+@router.get("/{cluster_id}/pods/{namespace}/{pod_name}/events")
+async def get_pod_events_endpoint(
+    cluster_id: int,
+    namespace: str,
+    pod_name: str,
+    limit: int = Query(100, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取与特定 Pod 相关的事件"""
+    cluster = await _get_cluster(db, cluster_id)
+    api_client = get_api_client_for_cluster(cluster)
+    items = list_pod_events(api_client, namespace, pod_name, limit)
+    return {"cluster_id": cluster_id, "namespace": namespace, "pod_name": pod_name, "items": items, "total": len(items)}
+
+
+@router.get("/{cluster_id}/metrics/top-pods")
+async def get_top_pods_endpoint(
+    cluster_id: int,
+    limit: int = Query(5, ge=1, le=20, description="返回数量"),
+    sort_by: str = Query("cpu", description="排序字段: cpu 或 memory"),
+    namespace: str | None = Query(None, description="命名空间过滤（可选）"),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取资源消耗最高的 Pod 列表（Top N）"""
+    cluster = await _get_cluster(db, cluster_id)
+    api_client = get_api_client_for_cluster(cluster)
+    kubeconfig_content = get_kubeconfig_content_for_cluster(cluster)
+    result = get_top_pods(
+        api_client=api_client,
+        kubeconfig_content=kubeconfig_content,
+        limit=limit,
+        sort_by=sort_by,
+        namespace=namespace,
+    )
     return {"cluster_id": cluster_id, **result}

@@ -27,6 +27,14 @@
       <div v-if="activeTab !== 'nodes' && activeTab !== 'dashboard'" class="card">
         <div class="card-header">
           <span class="card-title">{{ tabLabel }}</span>
+          <!-- 批量操作栏 (Pod 列表时显示) -->
+          <div v-if="activeTab === 'pods' && selectedItems.length > 0" class="batch-actions">
+            <span class="batch-count">已选择 {{ selectedItems.length }} 项</span>
+            <button class="btn btn-sm btn-secondary" @click="batchRestart">批量重启</button>
+            <button class="btn btn-sm btn-danger" @click="batchDelete">批量删除</button>
+            <button class="btn btn-sm btn-secondary" @click="openLabelModal">批量修改标签</button>
+            <button class="btn btn-sm btn-secondary" @click="clearSelection">取消选择</button>
+          </div>
         </div>
         <div class="card-body">
           <div v-if="resourceLoading" class="empty-state">加载中...</div>
@@ -36,12 +44,27 @@
             <table>
               <thead>
                 <tr>
+                  <th v-if="activeTab === 'pods'" class="checkbox-col">
+                    <input
+                      type="checkbox"
+                      :checked="isAllSelected"
+                      :indeterminate.prop="isSomeSelected && !isAllSelected"
+                      @change="toggleSelectAll"
+                    />
+                  </th>
                   <th v-for="h in tableHeaders" :key="h">{{ h }}</th>
                   <th v-if="hasOperations">操作</th>
                 </tr>
               </thead>
               <tbody>
                 <tr v-for="item in items" :key="item.name + (item.namespace || '')">
+                  <td v-if="activeTab === 'pods'" class="checkbox-col">
+                    <input
+                      type="checkbox"
+                      :checked="isItemSelected(item)"
+                      @change="toggleSelectItem(item)"
+                    />
+                  </td>
                   <td v-for="(val, k) in rowData(item)" :key="k">{{ val }}</td>
                   <td v-if="hasOperations">
                     <div class="action-buttons">
@@ -55,6 +78,7 @@
                       >
                         扩缩容
                       </button>
+                      <button v-if="activeTab === 'pods'" class="btn btn-sm btn-secondary" @click="openLogViewer(item)">日志</button>
                     </div>
                   </td>
                 </tr>
@@ -112,6 +136,23 @@
           </div>
         </div>
       </div>
+
+      <!-- 日志查看弹窗 -->
+      <div v-if="showLogViewer" class="modal-overlay" @click.self="showLogViewer = false">
+        <div class="modal modal-log">
+          <div class="modal-header">
+            <h2>日志查看</h2>
+            <button class="btn btn-sm btn-secondary" @click="showLogViewer = false">关闭</button>
+          </div>
+          <LogViewer
+            v-if="showLogViewer"
+            :cluster-id="clusterId"
+            :namespace="logPodNamespace"
+            :pod-name="logPodName"
+            @close="showLogViewer = false"
+          />
+        </div>
+      </div>
     </template>
   </div>
 </template>
@@ -123,6 +164,7 @@ import { clusterApi, resourceApi } from '@/api'
 import type { Cluster } from '@/api'
 import Dashboard from './Dashboard.vue'
 import NodeMetrics from './NodeMetrics.vue'
+import LogViewer from '@/components/LogViewer.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -164,6 +206,117 @@ const hasYaml = computed(() => activeTab.value !== 'helm')
 const hasOperations = computed(() => hasYaml.value || ['deployments', 'statefulsets', 'helm'].includes(activeTab.value))
 const isWorkloadTab = computed(() => ['deployments', 'statefulsets', 'rollouts'].includes(activeTab.value))
 
+// 批量选择相关
+const selectedItems = ref<any[]>([])
+
+const isAllSelected = computed(() => {
+  return items.value.length > 0 && items.value.every((item) => isItemSelected(item))
+})
+
+const isSomeSelected = computed(() => {
+  return items.value.some((item) => isItemSelected(item))
+})
+
+function isItemSelected(item: any): boolean {
+  return selectedItems.value.some(
+    (s) => s.namespace === item.namespace && s.name === item.name
+  )
+}
+
+function toggleSelectItem(item: any) {
+  const index = selectedItems.value.findIndex(
+    (s) => s.namespace === item.namespace && s.name === item.name
+  )
+  if (index >= 0) {
+    selectedItems.value.splice(index, 1)
+  } else {
+    selectedItems.value.push({ namespace: item.namespace, name: item.name })
+  }
+}
+
+function toggleSelectAll() {
+  if (isAllSelected.value) {
+    selectedItems.value = []
+  } else {
+    selectedItems.value = items.value.map((item) => ({
+      namespace: item.namespace,
+      name: item.name,
+    }))
+  }
+}
+
+function clearSelection() {
+  selectedItems.value = []
+}
+
+async function batchRestart() {
+  if (!selectedItems.value.length) return
+  if (!confirm(`确定要重启选中的 ${selectedItems.value.length} 个 Pod 吗？`)) return
+  try {
+    const { batchApi } = await import('@/api')
+    const res = await batchApi.restartPods(clusterId.value, selectedItems.value)
+    alert(
+      `批量重启完成: 成功 ${res.data.success.length}, 失败 ${res.data.failed.length}`
+    )
+    clearSelection()
+    loadResource()
+  } catch (e: any) {
+    alert('批量重启失败: ' + (e.response?.data?.detail || e.message))
+  }
+}
+
+async function batchDelete() {
+  if (!selectedItems.value.length) return
+  if (
+    !confirm(
+      `确定要删除选中的 ${selectedItems.value.length} 个 Pod 吗？此操作不可恢复！`
+    )
+  )
+    return
+  try {
+    const { batchApi } = await import('@/api')
+    const res = await batchApi.deletePods(clusterId.value, selectedItems.value)
+    alert(
+      `批量删除完成: 成功 ${res.data.success.length}, 失败 ${res.data.failed.length}`
+    )
+    clearSelection()
+    loadResource()
+  } catch (e: any) {
+    alert('批量删除失败: ' + (e.response?.data?.detail || e.message))
+  }
+}
+
+async function openLabelModal() {
+  const labels = prompt('请输入要添加/更新的标签，格式: key1=value1,key2=value2')
+  if (!labels) return
+  try {
+    const labelDict: Record<string, string> = {}
+    labels.split(',').forEach((pair) => {
+      const [key, value] = pair.trim().split('=')
+      if (key && value) {
+        labelDict[key.trim()] = value.trim()
+      }
+    })
+    if (Object.keys(labelDict).length === 0) {
+      alert('标签格式无效')
+      return
+    }
+    const { batchApi } = await import('@/api')
+    const res = await batchApi.updateLabels(
+      clusterId.value,
+      selectedItems.value,
+      labelDict
+    )
+    alert(
+      `批量更新标签完成: 成功 ${res.data.success.length}, 失败 ${res.data.failed.length}`
+    )
+    clearSelection()
+    loadResource()
+  } catch (e: any) {
+    alert('批量更新标签失败: ' + (e.response?.data?.detail || e.message))
+  }
+}
+
 function getWorkloadKind(): string {
   const map: Record<string, string> = {
     deployments: 'Deployment',
@@ -191,6 +344,11 @@ const helmError = ref('')
 const helmValuesModal = ref<{ namespace: string; name: string } | null>(null)
 const helmValuesContent = ref('')
 const helmValuesLoading = ref(false)
+
+// 日志相关
+const showLogViewer = ref(false)
+const logPodName = ref('')
+const logPodNamespace = ref('')
 
 const hasCollapsedFields = computed(() => {
   // 检查原始 YAML 中是否包含需要折叠的字段
@@ -564,6 +722,12 @@ function closeHelmValuesModal() {
   helmValuesModal.value = null
 }
 
+function openLogViewer(pod: any) {
+  logPodName.value = pod.name
+  logPodNamespace.value = pod.namespace
+  showLogViewer.value = true
+}
+
 async function doScale() {
   if (!scaleTarget.value) return
   scaleLoading.value = true
@@ -587,6 +751,7 @@ async function doScale() {
 watch(activeTab, () => {
   filterNs.value = ''
   helmError.value = ''
+  clearSelection()
   if (connectionOk.value) loadResource()
 }, { immediate: true })
 
@@ -610,6 +775,30 @@ onMounted(loadCluster)
 .card-title {
   font-weight: 500;
   font-size: 0.95rem;
+}
+.batch-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+.batch-count {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin-right: 0.5rem;
+}
+.btn-danger {
+  background: var(--error);
+  color: white;
+  border-color: var(--error);
+}
+.btn-danger:hover {
+  background: #d32f2f;
+  border-color: #d32f2f;
+}
+.checkbox-col {
+  width: 30px;
+  text-align: center;
 }
 .ns-filter {
   width: auto;
@@ -691,5 +880,13 @@ onMounted(loadCluster)
   word-break: break-all;
   max-height: 60vh;
   margin: 0;
+}
+.modal-log {
+  max-width: 95vw;
+  width: 1200px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem;
 }
 </style>

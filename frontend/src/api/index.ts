@@ -128,3 +128,49 @@ export const scalingApi = {
     replicas: number
   }) => api.post(`/scaling/scale/${clusterId}`, data),
 }
+
+export const logsApi = {
+  getPodLogs: (clusterId: number, namespace: string, podName: string, container?: string, tailLines: number = 500) => {
+    const params: Record<string, any> = { namespace, pod_name: podName, tail_lines: tailLines }
+    if (container) params.container = container
+    return api.get<{ logs: string }>(`/logs/${clusterId}/pod`, { params })
+  },
+  getPodContainers: (clusterId: number, namespace: string, podName: string) =>
+    api.get<{ containers: { name: string; image: string }[] }>(`/logs/${clusterId}/pod/containers`, {
+      params: { namespace, pod_name: podName },
+    }),
+}
+
+export const eventsApi = {
+  getPodEvents: (clusterId: number, namespace: string, podName: string) =>
+    api.get(`/resources/${clusterId}/pods/${namespace}/${podName}/events`),
+}
+
+export const analysisApi = {
+  getWorkloadHealth: (clusterId: number, namespace?: string) =>
+    api.get(`/resources/${clusterId}/analysis/workload-health`, { params: namespace ? { namespace } : {} }),
+  getTopPods: (clusterId: number, limit: number = 5, sortBy: 'cpu' | 'memory' = 'cpu') =>
+    api.get(`/resources/${clusterId}/metrics/top-pods`, { params: { limit, sort_by: sortBy } }),
+}
+
+export const batchApi = {
+  restartPods: (clusterId: number, items: { namespace: string; name: string }[]) =>
+    api.post('/batch/restart-pods', { cluster_id: clusterId, items }),
+  deletePods: (clusterId: number, items: { namespace: string; name: string }[]) =>
+    api.post('/batch/delete-pods', { cluster_id: clusterId, items }),
+  updateLabels: (clusterId: number, items: { namespace: string; name: string }[], labels: Record<string, string>) =>
+    api.post('/batch/update-labels', { cluster_id: clusterId, items, labels }),
+}
+
+export const searchApi = {
+  globalSearch: (clusterId: number, keyword: string, resourceType?: string) => {
+    const params: Record<string, any> = { keyword }
+    if (resourceType) params.type = resourceType
+    return api.get(`/search`, { params: { cluster_id: clusterId, ...params } })
+  },
+}
+
+export const auditApi = {
+  getAuditLogs: (clusterId?: number, limit: number = 100) =>
+    api.get('/audit/logs', { params: clusterId ? { cluster_id: clusterId, limit } : { limit } }),
+}

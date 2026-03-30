@@ -1026,6 +1026,55 @@ def list_events(api_client, namespace: str | None = None, limit: int = 100) -> l
     return result
 
 
+def list_pod_events(api_client, namespace: str, pod_name: str, limit: int = 100) -> list[dict]:
+    """列出与特定 Pod 相关的事件（通过 fieldSelector 筛选）
+
+    Args:
+        api_client: K8s API client
+        namespace: 命名空间
+        pod_name: Pod 名称
+        limit: 返回事件数量上限
+
+    Returns:
+        事件列表，按时间倒序
+    """
+    v1 = client.CoreV1Api(api_client)
+
+    # 使用 fieldSelector 筛选与该 Pod 相关的事件
+    # fieldSelector 格式: involvedObject.name=<pod_name>,involvedObject.kind=Pod
+    field_selector = f"involvedObject.name={pod_name},involvedObject.kind=Pod"
+
+    try:
+        events = v1.list_namespaced_event(
+            namespace=namespace,
+            field_selector=field_selector,
+            limit=limit
+        )
+    except Exception as e:
+        logger.warning(f"获取 Pod 事件失败: {namespace}/{pod_name}, 原因: {e}")
+        return []
+
+    result = []
+    for e in events.items:
+        result.append({
+            "name": e.metadata.name,
+            "namespace": e.metadata.namespace,
+            "type": e.type or 'Normal',
+            "reason": e.reason or '',
+            "message": e.message or '',
+            "source": e.source.component if e.source else '',
+            "age": _get_age(e.metadata.creation_timestamp),
+            "count": e.count or 1,
+            "last_timestamp": e.last_timestamp.isoformat() if e.last_timestamp else '',
+            "first_timestamp": e.first_timestamp.isoformat() if e.first_timestamp else '',
+            "involved_object": f"{e.involved_object.kind}/{e.involved_object.name}" if e.involved_object else '',
+        })
+
+    # 按时间倒序
+    result.sort(key=lambda x: x['last_timestamp'] or '', reverse=True)
+    return result
+
+
 def get_cluster_overview(api_client) -> dict:
     """获取集群基础统计信息
 
@@ -1413,6 +1462,123 @@ def get_pod_metrics(api_client, kubeconfig_content: str = None) -> dict:
             "memory": total_memory_usage,
         },
         "items": items,
+    }
+
+
+def get_top_pods(
+    api_client,
+    kubeconfig_content: str = None,
+    limit: int = 5,
+    sort_by: str = "cpu",
+    namespace: str = None,
+) -> dict:
+    """获取资源消耗最高的 Pod 列表
+
+    Args:
+        api_client: K8s API client
+        kubeconfig_content: kubeconfig 内容（用于获取 metrics）
+        limit: 返回数量，默认 5
+        sort_by: 排序字段，cpu 或 memory
+        namespace: 命名空间过滤（可选）
+
+    Returns:
+        {"cpu_top": [...], "memory_top": [...]}
+    """
+    v1 = client.CoreV1Api(api_client)
+
+    # 获取 Pod 列表
+    if namespace:
+        all_pods = v1.list_namespaced_pod(namespace=namespace)
+    else:
+        all_pods = v1.list_pod_for_all_namespaces()
+
+    # 构建 Pod 基础信息和资源请求
+    pod_data = []
+    for pod in all_pods.items:
+        cpu_request = 0.0
+        memory_request = 0
+        for container in pod.spec.containers:
+            if container.resources and container.resources.requests:
+                cpu_req = container.resources.requests.get("cpu")
+                mem_req = container.resources.requests.get("memory")
+                if cpu_req:
+                    cpu_request += _parse_cpu_value(str(cpu_req))
+                if mem_req:
+                    memory_request += _parse_resource_value(str(mem_req))
+
+        pod_data.append({
+            "name": pod.metadata.name,
+            "namespace": pod.metadata.namespace,
+            "cpu_request": round(cpu_request, 4),
+            "memory_request": memory_request,
+            "cpu_usage": None,
+            "memory_usage": None,
+            "phase": pod.status.phase if pod.status else "Unknown",
+        })
+
+    # 获取实际使用量
+    if kubeconfig_content:
+        kubeconfig_path = None
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", suffix=".kubeconfig", delete=False) as f:
+                f.write(kubeconfig_content)
+                kubeconfig_path = f.name
+
+            env = os.environ.copy()
+            env["KUBECONFIG"] = kubeconfig_path
+
+            cmd = ["kubectl", "top", "pods"]
+            if namespace:
+                cmd.extend(["-n", namespace])
+            else:
+                cmd.append("--all-namespaces")
+            cmd.append("--no-headers")
+
+            result = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=60)
+            if result.returncode == 0:
+                pod_usage_map = {}
+                for line in result.stdout.strip().split("\n"):
+                    if line:
+                        parts = line.split()
+                        if len(parts) >= 4:
+                            # 无表头格式: NAMESPACE NAME CPU MEMORY
+                            # 有表头格式: NAMESPACE NAME CPU% MEMORY%
+                            ns = parts[0]
+                            name = parts[1]
+                            cpu_str = parts[2]
+                            mem_str = parts[3]
+                            pod_usage_map[(ns, name)] = {
+                                "cpu": _parse_cpu_value(cpu_str),
+                                "memory": _parse_resource_value(mem_str),
+                            }
+
+                # 合并使用量
+                for pod in pod_data:
+                    key = (pod["namespace"], pod["name"])
+                    if key in pod_usage_map:
+                        usage = pod_usage_map[key]
+                        pod["cpu_usage"] = round(usage["cpu"], 4)
+                        pod["memory_usage"] = usage["memory"]
+        except Exception as e:
+            logger.warning(f"无法获取 Pod metrics: {e}")
+        finally:
+            if kubeconfig_path:
+                os.unlink(kubeconfig_path)
+
+    # 过滤出有实际使用量的 Pod
+    pods_with_usage = [p for p in pod_data if p.get("cpu_usage") is not None or p.get("memory_usage") is not None]
+
+    # 按 CPU 排序
+    cpu_sorted = sorted(pods_with_usage, key=lambda x: x.get("cpu_usage") or 0, reverse=True)
+    cpu_top = cpu_sorted[:limit]
+
+    # 按内存排序
+    memory_sorted = sorted(pods_with_usage, key=lambda x: x.get("memory_usage") or 0, reverse=True)
+    memory_top = memory_sorted[:limit]
+
+    return {
+        "cpu_top": cpu_top,
+        "memory_top": memory_top,
     }
 
 
