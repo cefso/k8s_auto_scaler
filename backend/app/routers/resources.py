@@ -30,6 +30,7 @@ from app.services.k8s_service import (
     list_apisixroutes,
     list_apisixtlses,
     list_helm_releases,
+    helm_get_values,
     list_configmaps,
     list_secrets,
     list_traefikingresses,
@@ -238,6 +239,22 @@ async def get_helm_releases(
         "helm_available": result["helm_available"],
         "error": result["error"],
     }
+
+
+@router.get("/{cluster_id}/helm-values")
+async def get_helm_values(
+    cluster_id: int,
+    namespace: str = Query(...),
+    name: str = Query(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取 Helm release 的 values 文件"""
+    cluster = await _get_cluster(db, cluster_id)
+    kubeconfig_content = get_kubeconfig_content_for_cluster(cluster)
+    result = helm_get_values(kubeconfig_content, namespace, name)
+    if not result["success"]:
+        raise HTTPException(status_code=400, detail=result["error"])
+    return {"cluster_id": cluster_id, "name": name, "namespace": namespace, "values": result["values"]}
 
 
 @router.get("/{cluster_id}/pods")

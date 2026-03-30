@@ -46,7 +46,8 @@
                   <td v-if="hasOperations">
                     <div class="action-buttons">
                       <button v-if="isWorkloadTab" class="btn btn-sm btn-secondary" @click="openWorkloadDetail(item)">详情</button>
-                      <button v-if="hasYaml" class="btn btn-sm btn-secondary" @click="openYamlModal(item)">YAML</button>
+                      <button v-if="activeTab === 'helm'" class="btn btn-sm btn-secondary" @click="openHelmValuesModal(item)">获取 Values</button>
+                      <button v-if="hasYaml && activeTab !== 'helm'" class="btn btn-sm btn-secondary" @click="openYamlModal(item)">YAML</button>
                       <button
                         v-if="['deployments', 'statefulsets'].includes(activeTab)"
                         class="btn btn-sm btn-primary"
@@ -77,6 +78,20 @@
           </div>
           <pre v-if="yamlLoading" class="yaml-content">加载中...</pre>
           <pre v-else class="yaml-content">{{ displayYaml }}</pre>
+        </div>
+      </div>
+
+      <!-- Helm Values 弹窗 -->
+      <div v-if="helmValuesModal" class="modal-overlay" @click.self="closeHelmValuesModal">
+        <div class="modal modal-yaml">
+          <div class="modal-header">
+            <h2>Values - {{ helmValuesModal.namespace }}/{{ helmValuesModal.name }}</h2>
+            <div class="modal-header-actions">
+              <button class="btn btn-sm btn-secondary" @click="closeHelmValuesModal">关闭</button>
+            </div>
+          </div>
+          <pre v-if="helmValuesLoading" class="yaml-content">加载中...</pre>
+          <pre v-else class="yaml-content">{{ helmValuesContent }}</pre>
         </div>
       </div>
 
@@ -146,7 +161,7 @@ const hasNamespaceFilter = computed(() =>
 )
 
 const hasYaml = computed(() => activeTab.value !== 'helm')
-const hasOperations = computed(() => hasYaml.value || ['deployments', 'statefulsets'].includes(activeTab.value))
+const hasOperations = computed(() => hasYaml.value || ['deployments', 'statefulsets', 'helm'].includes(activeTab.value))
 const isWorkloadTab = computed(() => ['deployments', 'statefulsets', 'rollouts'].includes(activeTab.value))
 
 function getWorkloadKind(): string {
@@ -173,6 +188,9 @@ const yamlRawContent = ref('')  // 原始 YAML（未折叠）
 const yamlLoading = ref(false)
 const showCollapsedFields = ref(false)
 const helmError = ref('')
+const helmValuesModal = ref<{ namespace: string; name: string } | null>(null)
+const helmValuesContent = ref('')
+const helmValuesLoading = ref(false)
 
 const hasCollapsedFields = computed(() => {
   // 检查原始 YAML 中是否包含需要折叠的字段
@@ -203,7 +221,7 @@ const tabLabel = computed(() => tabs.find((t) => t.key === activeTab.value)?.lab
 
 const tableHeaders = computed(() => {
   const map: Record<string, string[]> = {
-    helm: ['名称', '命名空间', 'Chart', 'App Version', 'Revision', '状态', '年龄'],
+    helm: ['名称', '命名空间', 'Chart', 'App Version', 'Revision', '状态'],
     deployments: ['名称', '命名空间', '副本', '就绪', '状态', '年龄'],
     statefulsets: ['名称', '命名空间', '副本', '就绪', '状态', '年龄'],
     rollouts: ['名称', '命名空间', '副本', '就绪', '状态', '年龄'],
@@ -231,7 +249,6 @@ function rowData(item: any) {
         'App Version': item.app_version || '-',
         Revision: item.revision,
         状态: item.status || 'deployed',
-        年龄: item.age,
       }
     case 'deployments':
     case 'statefulsets':
@@ -527,6 +544,24 @@ function openWorkloadDetail(item: any) {
   router.push(
     `/cluster/${clusterId.value}/workload?kind=${getWorkloadKind()}&namespace=${item.namespace}&name=${item.name}`
   )
+}
+
+async function openHelmValuesModal(item: any) {
+  helmValuesModal.value = { namespace: item.namespace, name: item.name }
+  helmValuesContent.value = ''
+  helmValuesLoading.value = true
+  try {
+    const res = await resourceApi.helmGetValues(clusterId.value, item.namespace, item.name)
+    helmValuesContent.value = res.data.values || '# 无 values 内容'
+  } catch (e: any) {
+    helmValuesContent.value = '加载失败: ' + (e.response?.data?.detail || e.message)
+  } finally {
+    helmValuesLoading.value = false
+  }
+}
+
+function closeHelmValuesModal() {
+  helmValuesModal.value = null
 }
 
 async function doScale() {

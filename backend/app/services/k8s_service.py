@@ -504,6 +504,39 @@ def list_helm_releases(kubeconfig_content: str, namespace: str | None = None) ->
         os.unlink(kubeconfig_path)
 
 
+def helm_get_values(kubeconfig_content: str, namespace: str, name: str) -> dict:
+    """获取 Helm release 的 values 文件
+
+    返回格式:
+    - success=True: {"values": "...", "success": True}
+    - success=False: {"error": "...", "success": False}
+    """
+    helm_path = _ensure_helm()
+    if not helm_path:
+        return {"error": "helm CLI 不可用", "success": False}
+
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.kubeconfig', delete=False) as f:
+        f.write(kubeconfig_content)
+        kubeconfig_path = f.name
+
+    try:
+        cmd = [helm_path, "get", "values", name, "-n", namespace]
+        env = os.environ.copy()
+        env["KUBECONFIG"] = kubeconfig_path
+        result = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=30)
+        if result.returncode != 0:
+            logger.warning(f"helm values failed: {result.stderr}")
+            return {"error": result.stderr or "获取 values 失败", "success": False}
+        return {"values": result.stdout, "success": True}
+    except subprocess.TimeoutExpired:
+        return {"error": "获取 values 超时", "success": False}
+    except Exception as e:
+        logger.warning(f"helm values error: {e}")
+        return {"error": str(e), "success": False}
+    finally:
+        os.unlink(kubeconfig_path)
+
+
 def _ensure_helm() -> str | None:
     """检测或安装 helm CLI，返回 helm 路径"""
     # 1. 检查 PATH 中是否已有 helm
@@ -903,7 +936,7 @@ def get_workload_pods(api_client, namespace: str, workload_kind: str, workload_n
                                 "cpu_usage": round(_parse_cpu_value(cpu_str), 4),
                                 "memory_usage": _parse_resource_value(mem_str),
                             }
-                                except Exception as e:
+        except Exception as e:
             logger.warning(f"无法获取 Pod metrics: {e}")
         finally:
             if kubeconfig_path:

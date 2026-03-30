@@ -110,6 +110,8 @@ export const resourceApi = {
     api.get(`/resources/${clusterId}/workload-pods`, {
       params: { namespace, workload_kind: workloadKind, workload_name: workloadName },
     }),
+  helmGetValues: (clusterId: number, namespace: string, name: string) =>
+    api.get(`/resources/${clusterId}/helm-values`, { params: { namespace, name } }),
 }
 
 export const scalingApi = {
