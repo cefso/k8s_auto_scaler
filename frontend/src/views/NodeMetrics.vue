@@ -46,24 +46,6 @@
                   <th>Memory Request</th>
                   <th>Memory Limit</th>
                   <th>Memory Usage</th>
-      <div class="card" style="margin-top: 1.5rem">
-        <div class="card-header">
-          <span class="card-title">节点详情</span>
-        </div>
-        <div class="card-body">
-          <div v-if="!nodeMetrics.items.length" class="empty-state">暂无节点数据</div>
-          <div v-else class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>节点名称</th>
-                  <th>IP</th>
-                  <th>CPU Request</th>
-                  <th>CPU Limit</th>
-                  <th>CPU Usage</th>
-                  <th>Memory Request</th>
-                  <th>Memory Limit</th>
-                  <th>Memory Usage</th>
                 </tr>
               </thead>
               <tbody>

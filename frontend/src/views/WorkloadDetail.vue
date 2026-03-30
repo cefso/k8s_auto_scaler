@@ -164,7 +164,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { resourceApi } from '@/api'
+import { resourceApi, eventsApi } from '@/api'
 import LogViewer from '@/components/LogViewer.vue'
 
 const route = useRoute()
@@ -268,7 +268,7 @@ async function openPodEvents(pod: any) {
   eventsLoading.value = true
   podEvents.value = []
   try {
-    const res = await resourceApi.getPodEvents(
+    const res = await eventsApi.getPodEvents(
       clusterId.value,
       namespace.value,
       pod.name
