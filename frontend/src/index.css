@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --radius: 0.5rem;
+
+    /* Light theme */
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 221 83% 53%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 221 83% 53%;
+
+    /* K8s Dashboard specific */
+    --success: 142 71% 45%;
+    --warning: 38 92% 50%;
+    --error: 0 72% 51%;
+  }
+
+  .dark {
+    /* Dark theme */
+    --background: 210 17% 8%;
+    --foreground: 210 17% 93%;
+    --card: 210 17% 14%;
+    --card-foreground: 210 17% 93%;
+    --popover: 210 17% 14%;
+    --popover-foreground: 210 17% 93%;
+    --primary: 210 100% 67%;
+    --primary-foreground: 0 0% 0%;
+    --secondary: 215 19% 18%;
+    --secondary-foreground: 210 17% 93%;
+    --muted: 215 19% 18%;
+    --muted-foreground: 215 16% 65%;
+    --accent: 215 19% 18%;
+    --accent-foreground: 210 17% 93%;
+    --destructive: 0 63% 55%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 215 19% 25%;
+    --input: 215 19% 25%;
+    --ring: 210 100% 67%;
+
+    /* K8s Dashboard specific */
+    --success: 142 70% 45%;
+    --warning: 38 92% 50%;
+    --error: 0 72% 51%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, sans-serif;
+    margin: 0;
+  }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.5);
+}

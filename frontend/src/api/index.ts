@@ -133,7 +133,7 @@ export const scalingApi = {
 
 export const logsApi = {
   getPodLogs: (clusterId: number, namespace: string, podName: string, container?: string, tailLines: number = 500) => {
-    const params: Record<string, any> = { namespace, pod_name: podName, tail_lines: tailLines }
+    const params: Record<string, unknown> = { namespace, pod_name: podName, tail_lines: tailLines }
     if (container) params.container = container
     return api.get<{ logs: string }>(`/logs/${clusterId}/pod`, { params })
   },
@@ -166,7 +166,7 @@ export const batchApi = {
 
 export const searchApi = {
   globalSearch: (clusterId: number, keyword: string, resourceType?: string) => {
-    const params: Record<string, any> = { keyword }
+    const params: Record<string, unknown> = { keyword }
     if (resourceType) params.type = resourceType
     return api.get(`/search`, { params: { cluster_id: clusterId, ...params } })
   },
