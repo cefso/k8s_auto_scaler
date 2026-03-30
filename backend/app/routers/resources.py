@@ -39,6 +39,7 @@ from app.services.k8s_service import (
     list_traefikingressudps,
     get_workload_pods,
     get_top_pods,
+    list_hpas,
 )
 
 logger = logging.getLogger(__name__)
@@ -117,6 +118,19 @@ async def get_statefulsets(
     api_client = get_api_client_for_cluster(cluster)
     items = list_statefulsets(api_client, namespace)
     return {"cluster_id": cluster_id, "resource_type": "StatefulSet", "items": items, "total": len(items)}
+
+
+@router.get("/{cluster_id}/hpas")
+async def get_hpas(
+    cluster_id: int,
+    namespace: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """获取 HPA (Horizontal Pod Autoscaler) 列表"""
+    cluster = await _get_cluster(db, cluster_id)
+    api_client = get_api_client_for_cluster(cluster)
+    items = list_hpas(api_client, namespace)
+    return {"cluster_id": cluster_id, "resource_type": "HPA", "items": items, "total": len(items)}
 
 
 @router.get("/{cluster_id}/rollouts")

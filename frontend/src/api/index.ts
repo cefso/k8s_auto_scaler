@@ -56,6 +56,8 @@ export const resourceApi = {
     api.get(`/resources/${clusterId}/deployments`, { params: { namespace } }),
   statefulsets: (clusterId: number, namespace?: string) =>
     api.get(`/resources/${clusterId}/statefulsets`, { params: { namespace } }),
+  hpas: (clusterId: number, namespace?: string) =>
+    api.get(`/resources/${clusterId}/hpas`, { params: { namespace } }),
   rollouts: (clusterId: number, namespace?: string) =>
     api.get(`/resources/${clusterId}/rollouts`, { params: { namespace } }),
   ingressroutes: (clusterId: number, namespace?: string) =>

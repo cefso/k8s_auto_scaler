@@ -156,6 +156,43 @@ def list_statefulsets(api_client, namespace: str | None = None) -> list[dict]:
     ]
 
 
+def list_hpas(api_client, namespace: str | None = None) -> list[dict]:
+    """列出 HPAs (Horizontal Pod Autoscalers)"""
+    autoscaling_v2 = client.AutoscalingV2Api(api_client)
+    if namespace:
+        hpa_list = autoscaling_v2.list_namespaced_horizontal_pod_autoscaler(namespace=namespace)
+    else:
+        hpa_list = autoscaling_v2.list_cluster_horizontal_pod_autoscaler()
+
+    result = []
+    for h in hpa_list.items:
+        spec = h.spec
+        status = h.status
+        # 获取指标信息
+        cpu_percent = None
+        memory_percent = None
+        if status and status.current_metrics:
+            for metric in status.current_metrics:
+                if metric.resource and metric.resource.name == "cpu":
+                    cpu_percent = metric.resource.current.average_utilization
+                elif metric.resource and metric.resource.name == "memory":
+                    memory_percent = metric.resource.current.average_utilization
+
+        result.append({
+            "name": h.metadata.name,
+            "namespace": h.metadata.namespace,
+            "min_replicas": spec.min_replicas if spec else None,
+            "max_replicas": spec.max_replicas if spec else None,
+            "desired_replicas": status.desired_replicas if status else None,
+            "current_replicas": status.current_replicas if status else None,
+            "cpu_percent": cpu_percent,
+            "memory_percent": memory_percent,
+            "age": _get_age(h.metadata.creation_timestamp),
+            "labels": dict(h.metadata.labels) if h.metadata.labels else {},
+        })
+    return result
+
+
 def list_services(api_client, namespace: str | None = None) -> list[dict]:
     """列出 Services"""
     v1 = client.CoreV1Api(api_client)

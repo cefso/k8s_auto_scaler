@@ -178,6 +178,7 @@ const tabs = [
   { key: 'dashboard', label: '集群概览' },
   { key: 'nodes', label: '节点概览' },
   { key: 'helm', label: 'Helm' },
+  { key: 'hpas', label: 'HPA' },
   { key: 'deployments', label: 'Deployment' },
   { key: 'statefulsets', label: 'StatefulSet' },
   { key: 'rollouts', label: 'Rollout' },
@@ -199,7 +200,7 @@ const activeTab = computed(() => {
 })
 
 const hasNamespaceFilter = computed(() =>
-  ['deployments', 'statefulsets', 'rollouts', 'pods', 'services', 'ingresses', 'ingressroutes', 'ingressroutetcps', 'ingressrouteudps', 'apisixroutes', 'apisixtlses', 'configmaps', 'secrets'].includes(activeTab.value)
+  ['deployments', 'statefulsets', 'rollouts', 'pods', 'services', 'ingresses', 'ingressroutes', 'ingressroutetcps', 'ingressrouteudps', 'apisixroutes', 'apisixtlses', 'configmaps', 'secrets', 'hpas'].includes(activeTab.value)
 )
 
 const hasYaml = computed(() => activeTab.value !== 'helm')
@@ -380,6 +381,7 @@ const tabLabel = computed(() => tabs.find((t) => t.key === activeTab.value)?.lab
 const tableHeaders = computed(() => {
   const map: Record<string, string[]> = {
     helm: ['名称', '命名空间', 'Chart', 'App Version', 'Revision', '状态'],
+    hpas: ['名称', '命名空间', '最小副本', '最大副本', '当前副本', 'CPU', '内存', '年龄'],
     deployments: ['名称', '命名空间', '副本', '就绪', '状态', '年龄'],
     statefulsets: ['名称', '命名空间', '副本', '就绪', '状态', '年龄'],
     rollouts: ['名称', '命名空间', '副本', '就绪', '状态', '年龄'],
@@ -407,6 +409,17 @@ function rowData(item: any) {
         'App Version': item.app_version || '-',
         Revision: item.revision,
         状态: item.status || 'deployed',
+      }
+    case 'hpas':
+      return {
+        名称: item.name,
+        命名空间: item.namespace,
+        最小副本: item.min_replicas ?? '-',
+        最大副本: item.max_replicas ?? '-',
+        当前副本: item.current_replicas ?? '-',
+        CPU: item.cpu_percent !== null ? `${item.cpu_percent}%` : '-',
+        内存: item.memory_percent !== null ? `${item.memory_percent}%` : '-',
+        年龄: item.age,
       }
     case 'deployments':
     case 'statefulsets':
@@ -570,6 +583,8 @@ async function loadResource() {
       res = await resourceApi.apisixroutes(clusterId.value, filterNs.value || undefined)
     } else if (activeTab.value === 'apisixtlses') {
       res = await resourceApi.apisixtlses(clusterId.value, filterNs.value || undefined)
+    } else if (activeTab.value === 'hpas') {
+      res = await resourceApi.hpas(clusterId.value, filterNs.value || undefined)
     } else if (activeTab.value === 'configmaps') {
       res = await resourceApi.configmaps(clusterId.value, filterNs.value || undefined)
     } else {

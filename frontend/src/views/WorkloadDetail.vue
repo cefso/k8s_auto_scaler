@@ -115,22 +115,28 @@
         </div>
         <div v-if="eventsLoading" class="empty-state">加载中...</div>
         <div v-else-if="!podEvents.length" class="empty-state">暂无事件</div>
-        <div v-else class="events-list">
+        <div v-else class="events-timeline">
           <div
             v-for="(event, index) in podEvents"
             :key="index"
-            class="event-item"
-            :class="{ 'event-warning': event.type === 'Warning' }"
+            class="timeline-item"
+            :class="{ 'timeline-warning': event.type === 'Warning' }"
           >
-            <div class="event-header">
-              <span class="event-type" :class="event.type === 'Warning' ? 'type-warning' : 'type-normal'">
-                {{ event.type }}
-              </span>
-              <span class="event-reason">{{ event.reason }}</span>
-              <span class="event-time">{{ event.last_timestamp || event.age }}</span>
+            <div class="timeline-marker">
+              <div class="timeline-dot" :class="event.type === 'Warning' ? 'dot-warning' : 'dot-normal'"></div>
+              <div v-if="index < podEvents.length - 1" class="timeline-line"></div>
             </div>
-            <div class="event-message">{{ event.message }}</div>
-            <div class="event-source">来源: {{ event.source || '-' }}</div>
+            <div class="timeline-content">
+              <div class="event-header">
+                <span class="event-type" :class="event.type === 'Warning' ? 'type-warning' : 'type-normal'">
+                  {{ event.type }}
+                </span>
+                <span class="event-reason">{{ event.reason }}</span>
+                <span class="event-time">{{ event.last_timestamp || event.age }}</span>
+              </div>
+              <div class="event-message">{{ event.message }}</div>
+              <div class="event-source">来源: {{ event.source || '-' }}</div>
+            </div>
           </div>
         </div>
       </div>
@@ -467,21 +473,55 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
 }
-.events-list {
+.events-timeline {
   flex: 1;
   overflow: auto;
+  padding: 1rem;
 }
-.event-item {
+.timeline-item {
+  display: flex;
+  gap: 1rem;
+  padding-bottom: 1rem;
+}
+.timeline-item:last-child {
+  padding-bottom: 0;
+}
+.timeline-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+}
+.timeline-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.timeline-dot.dot-normal {
+  background: var(--accent);
+  border: 2px solid var(--accent);
+}
+.timeline-dot.dot-warning {
+  background: var(--error);
+  border: 2px solid var(--error);
+  box-shadow: 0 0 0 4px rgba(248, 81, 73, 0.2);
+}
+.timeline-line {
+  width: 2px;
+  flex: 1;
+  background: var(--border);
+  margin-top: 4px;
+}
+.timeline-content {
+  flex: 1;
+  min-width: 0;
+}
+.timeline-warning .timeline-content {
+  background: rgba(248, 81, 73, 0.05);
+  border-radius: 6px;
   padding: 0.75rem;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-card);
-}
-.event-item:last-child {
-  border-bottom: none;
-}
-.event-item.event-warning {
   border-left: 3px solid var(--error);
-  background: rgba(239, 68, 68, 0.05);
 }
 .event-header {
   display: flex;
@@ -505,14 +545,14 @@ onMounted(() => {
 }
 .event-reason {
   font-weight: 500;
-  color: var(--text-primary);
+  color: var(--text);
 }
 .event-time {
   color: var(--text-muted);
   font-size: 0.85rem;
 }
 .event-message {
-  color: var(--text-secondary);
+  color: var(--text);
   font-size: 0.9rem;
   margin-bottom: 0.25rem;
   word-break: break-all;
