@@ -27,49 +27,25 @@
         </div>
       </div>
 
-      <!-- Top Pods 排行 -->
-      <div class="top-pods-section">
-        <div class="top-pods-header">
-          <div class="top-pods-filters">
-            <select v-model="selectedNode" class="form-control" @change="loadTopPods">
-              <option value="">全部节点</option>
-              <option v-for="n in nodeMetrics.items" :key="n.name" :value="n.name">{{ n.name }}</option>
-            </select>
-          </div>
-        </div>
-        <div class="top-pods-grid">
-          <div class="top-pods-card">
-            <h3 class="top-pods-title">CPU 消耗 Top 5</h3>
-            <div v-if="topPodsLoading" class="empty-state">加载中...</div>
-            <div v-else-if="!cpuTopPods.length" class="empty-state">暂无数据</div>
-            <div v-else class="top-pods-list">
-              <div v-for="(pod, idx) in cpuTopPods" :key="pod.name + pod.namespace" class="top-pod-item">
-                <span class="top-pod-rank" :class="'rank-' + (idx + 1)">{{ idx + 1 }}</span>
-                <div class="top-pod-info">
-                  <span class="top-pod-name">{{ pod.namespace }}/{{ pod.name }}</span>
-                  <span class="top-pod-value">{{ pod.cpu_usage || pod.cpu_request }} Cores</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="top-pods-card">
-            <h3 class="top-pods-title">内存消耗 Top 5</h3>
-            <div v-if="topPodsLoading" class="empty-state">加载中...</div>
-            <div v-else-if="!memoryTopPods.length" class="empty-state">暂无数据</div>
-            <div v-else class="top-pods-list">
-              <div v-for="(pod, idx) in memoryTopPods" :key="pod.name + pod.namespace" class="top-pod-item">
-                <span class="top-pod-rank" :class="'rank-' + (idx + 1)">{{ idx + 1 }}</span>
-                <div class="top-pod-info">
-                  <span class="top-pod-name">{{ pod.namespace }}/{{ pod.name }}</span>
-                  <span class="top-pod-value">{{ formatBytes(pod.memory_usage || pod.memory_request) }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <!-- 节点详情 -->
+      <div class="card" style="margin-top: 1.5rem">
+        <div class="card-header">
+          <span class="card-title">节点详情</span>
+        </div>
+        <div class="card-body">
+          <div v-if="!nodeMetrics.items.length" class="empty-state">暂无节点数据</div>
+          <div v-else class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>节点名称</th>
+                  <th>IP</th>
+                  <th>CPU Request</th>
+                  <th>CPU Limit</th>
+                  <th>CPU Usage</th>
+                  <th>Memory Request</th>
+                  <th>Memory Limit</th>
+                  <th>Memory Usage</th>
       <div class="card" style="margin-top: 1.5rem">
         <div class="card-header">
           <span class="card-title">节点详情</span>
@@ -113,6 +89,48 @@
                 </tr>
               </tbody>
             </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Top Pods 排行 -->
+      <div class="top-pods-section">
+        <div class="top-pods-header">
+          <div class="top-pods-filters">
+            <select v-model="selectedNode" class="form-control" @change="loadTopPods">
+              <option value="">全部节点</option>
+              <option v-for="n in nodeMetrics.items" :key="n.name" :value="n.name">{{ n.name }}</option>
+            </select>
+          </div>
+        </div>
+        <div class="top-pods-grid">
+          <div class="top-pods-card">
+            <h3 class="top-pods-title">CPU 消耗 Top 5</h3>
+            <div v-if="topPodsLoading" class="empty-state">加载中...</div>
+            <div v-else-if="!cpuTopPods.length" class="empty-state">暂无数据</div>
+            <div v-else class="top-pods-list">
+              <div v-for="(pod, idx) in cpuTopPods" :key="pod.name + pod.namespace" class="top-pod-item">
+                <span class="top-pod-rank" :class="'rank-' + (idx + 1)">{{ idx + 1 }}</span>
+                <div class="top-pod-info">
+                  <span class="top-pod-name">{{ pod.namespace }}/{{ pod.name }}</span>
+                  <span class="top-pod-value">{{ pod.cpu_usage || pod.cpu_request }} Cores</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="top-pods-card">
+            <h3 class="top-pods-title">内存消耗 Top 5</h3>
+            <div v-if="topPodsLoading" class="empty-state">加载中...</div>
+            <div v-else-if="!memoryTopPods.length" class="empty-state">暂无数据</div>
+            <div v-else class="top-pods-list">
+              <div v-for="(pod, idx) in memoryTopPods" :key="pod.name + pod.namespace" class="top-pod-item">
+                <span class="top-pod-rank" :class="'rank-' + (idx + 1)">{{ idx + 1 }}</span>
+                <div class="top-pod-info">
+                  <span class="top-pod-name">{{ pod.namespace }}/{{ pod.name }}</span>
+                  <span class="top-pod-value">{{ formatBytes(pod.memory_usage || pod.memory_request) }}</span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>

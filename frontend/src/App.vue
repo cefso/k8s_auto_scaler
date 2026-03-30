@@ -188,24 +188,6 @@
             </router-link>
           </nav>
         </section>
-
-        <section v-if="currentClusterId && onClusterPage" class="sidebar-section">
-          <h3 class="sidebar-title collapsible" @click="toggleSection('scaling')">
-            <span class="collapse-arrow" :class="{ collapsed: expandedSection !== 'scaling' }">▸</span>
-            弹性伸缩
-          </h3>
-          <nav v-show="expandedSection === 'scaling'" class="sidebar-nav">
-            <router-link
-              v-for="r in scalingTypes"
-              :key="r.key"
-              :to="`/cluster/${currentClusterId}?tab=${r.key}`"
-              :class="['sidebar-item', { active: currentTab === r.key }]"
-            >
-              <span class="sidebar-icon">▪</span>
-              {{ r.label }}
-            </router-link>
-          </nav>
-        </section>
       </aside>
 
       <main class="main">
@@ -253,15 +235,12 @@ const appTypes = [
   { key: 'helm', label: 'Helm' },
 ]
 
-const scalingTypes = [
-  { key: 'hpas', label: 'HPA' },
-]
-
 const resourceTypes = [
   { key: 'deployments', label: 'Deployment' },
   { key: 'statefulsets', label: 'StatefulSet' },
   { key: 'rollouts', label: 'Rollout' },
   { key: 'pods', label: 'Pod' },
+  { key: 'hpas', label: 'HPA' },
 ]
 
 const networkTypes = [
