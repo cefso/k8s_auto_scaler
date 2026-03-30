@@ -79,6 +79,7 @@
                         扩缩容
                       </button>
                       <button v-if="activeTab === 'pods'" class="btn btn-sm btn-secondary" @click="openLogViewer(item)">日志</button>
+                      <button v-if="activeTab === 'pods'" class="btn btn-sm btn-secondary" @click="openPodEvents(item)">事件</button>
                     </div>
                   </td>
                 </tr>
@@ -153,6 +154,42 @@
           />
         </div>
       </div>
+
+      <!-- Pod 事件弹窗 -->
+      <div v-if="showEventsModal" class="modal-overlay" @click.self="showEventsModal = false">
+        <div class="modal modal-events">
+          <div class="modal-header">
+            <h2>Pod 事件 - {{ eventsPodNamespace }}/{{ eventsPodName }}</h2>
+            <button class="btn btn-sm btn-secondary" @click="showEventsModal = false">关闭</button>
+          </div>
+          <div v-if="eventsLoading" class="empty-state">加载中...</div>
+          <div v-else-if="!podEvents.length" class="empty-state">暂无事件</div>
+          <div v-else class="events-timeline">
+            <div
+              v-for="(event, index) in podEvents"
+              :key="index"
+              class="timeline-item"
+              :class="{ 'timeline-warning': event.type === 'Warning' }"
+            >
+              <div class="timeline-marker">
+                <div class="timeline-dot" :class="event.type === 'Warning' ? 'dot-warning' : 'dot-normal'"></div>
+                <div v-if="index < podEvents.length - 1" class="timeline-line"></div>
+              </div>
+              <div class="timeline-content">
+                <div class="event-header">
+                  <span class="event-type" :class="event.type === 'Warning' ? 'type-warning' : 'type-normal'">
+                    {{ event.type }}
+                  </span>
+                  <span class="event-reason">{{ event.reason }}</span>
+                  <span class="event-time">{{ event.last_timestamp || event.age }}</span>
+                </div>
+                <div class="event-message">{{ event.message }}</div>
+                <div class="event-source">来源: {{ event.source || '-' }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </template>
   </div>
 </template>
@@ -160,7 +197,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { clusterApi, resourceApi } from '@/api'
+import { clusterApi, resourceApi, eventsApi } from '@/api'
 import type { Cluster } from '@/api'
 import Dashboard from './Dashboard.vue'
 import NodeMetrics from './NodeMetrics.vue'
@@ -350,6 +387,13 @@ const helmValuesLoading = ref(false)
 const showLogViewer = ref(false)
 const logPodName = ref('')
 const logPodNamespace = ref('')
+
+// 事件相关
+const showEventsModal = ref(false)
+const eventsPodName = ref('')
+const eventsPodNamespace = ref('')
+const podEvents = ref<any[]>([])
+const eventsLoading = ref(false)
 
 const hasCollapsedFields = computed(() => {
   // 检查原始 YAML 中是否包含需要折叠的字段
@@ -743,6 +787,23 @@ function openLogViewer(pod: any) {
   showLogViewer.value = true
 }
 
+async function openPodEvents(pod: any) {
+  eventsPodName.value = pod.name
+  eventsPodNamespace.value = pod.namespace
+  showEventsModal.value = true
+  eventsLoading.value = true
+  podEvents.value = []
+  try {
+    const res = await eventsApi.getPodEvents(clusterId.value, pod.namespace, pod.name)
+    podEvents.value = res.data.items || []
+  } catch (e) {
+    console.error('获取 Pod 事件失败:', e)
+    podEvents.value = []
+  } finally {
+    eventsLoading.value = false
+  }
+}
+
 async function doScale() {
   if (!scaleTarget.value) return
   scaleLoading.value = true
@@ -903,5 +964,100 @@ onMounted(loadCluster)
   display: flex;
   flex-direction: column;
   padding: 1rem;
+}
+.modal-events {
+  max-width: 90vw;
+  width: 800px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+.events-timeline {
+  flex: 1;
+  overflow: auto;
+  padding: 1rem;
+}
+.timeline-item {
+  display: flex;
+  gap: 1rem;
+  padding-bottom: 1rem;
+}
+.timeline-item:last-child {
+  padding-bottom: 0;
+}
+.timeline-marker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+}
+.timeline-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.timeline-dot.dot-normal {
+  background: var(--accent);
+  border: 2px solid var(--accent);
+}
+.timeline-dot.dot-warning {
+  background: var(--error);
+  border: 2px solid var(--error);
+  box-shadow: 0 0 0 4px rgba(248, 81, 73, 0.2);
+}
+.timeline-line {
+  width: 2px;
+  flex: 1;
+  background: var(--border);
+  margin-top: 4px;
+}
+.timeline-content {
+  flex: 1;
+  min-width: 0;
+}
+.timeline-warning .timeline-content {
+  background: rgba(248, 81, 73, 0.05);
+  border-radius: 6px;
+  padding: 0.75rem;
+  border-left: 3px solid var(--error);
+}
+.event-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+.event-type {
+  padding: 0.15rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+.event-type.type-normal {
+  background: var(--success);
+  color: white;
+}
+.event-type.type-warning {
+  background: var(--error);
+  color: white;
+}
+.event-reason {
+  font-weight: 500;
+  color: var(--text);
+}
+.event-time {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+.event-message {
+  color: var(--text);
+  font-size: 0.9rem;
+  margin-bottom: 0.25rem;
+  word-break: break-all;
+}
+.event-source {
+  color: var(--text-muted);
+  font-size: 0.8rem;
 }
 </style>
