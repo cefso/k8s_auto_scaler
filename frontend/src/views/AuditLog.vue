@@ -22,7 +22,7 @@
         <div v-if="loading" class="empty-state">加载中...</div>
         <div v-else-if="!logs.length" class="empty-state">暂无审计日志</div>
         <div v-else class="table-wrap">
-          <table>
+          <table class="audit-table">
             <thead>
               <tr>
                 <th>时间</th>
@@ -148,7 +148,7 @@ onMounted(() => {
 
 <style scoped>
 .audit-log-page {
-  max-width: 1400px;
+  width: 100%;
 }
 
 .page-header {
@@ -157,6 +157,7 @@ onMounted(() => {
   justify-content: space-between;
   gap: 1rem;
   margin-bottom: 1rem;
+  flex-wrap: wrap;
 }
 
 .page-header-left {
@@ -168,6 +169,29 @@ onMounted(() => {
 .page-header-left .form-control {
   width: auto;
   min-width: 150px;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.audit-table {
+  min-width: 100%;
+}
+
+.audit-table th,
+.audit-table td {
+  white-space: nowrap;
+}
+
+.audit-table th:first-child,
+.audit-table td:first-child {
+  min-width: 160px;
+}
+
+.audit-table th:last-child,
+.audit-table td:last-child {
+  max-width: 300px;
 }
 
 .action-badge {
@@ -203,7 +227,7 @@ onMounted(() => {
 }
 
 .details-cell {
-  max-width: 200px;
+  max-width: 300px;
 }
 
 .details-pre {
@@ -216,6 +240,7 @@ onMounted(() => {
   text-overflow: ellipsis;
   white-space: pre-wrap;
   word-break: break-all;
+  max-height: 100px;
 }
 
 .pagination {
