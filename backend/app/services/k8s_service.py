@@ -162,7 +162,7 @@ def list_hpas(api_client, namespace: str | None = None) -> list[dict]:
     if namespace:
         hpa_list = autoscaling_v2.list_namespaced_horizontal_pod_autoscaler(namespace=namespace)
     else:
-        hpa_list = autoscaling_v2.list_cluster_horizontal_pod_autoscaler()
+        hpa_list = autoscaling_v2.list_horizontal_pod_autoscaler_for_all_namespaces()
 
     result = []
     for h in hpa_list.items:
@@ -599,7 +599,7 @@ def _ensure_helm() -> str | None:
     # 检测平台
     platform = _get_platform()
     if not platform:
-        logger.error(" unsupported platform for helm download")
+        logger.error("Unsupported platform for helm download")
         return None
 
     url = f"https://get.helm.sh/helm-{_HELM_VERSION}-{platform}.tar.gz"
@@ -1548,12 +1548,25 @@ def get_top_pods(
                 if mem_req:
                     memory_request += _parse_resource_value(str(mem_req))
 
+        cpu_limit = 0.0
+        memory_limit = 0
+        for container in pod.spec.containers:
+            if container.resources and container.resources.limits:
+                cpu_lim = container.resources.limits.get("cpu")
+                mem_lim = container.resources.limits.get("memory")
+                if cpu_lim:
+                    cpu_limit += _parse_cpu_value(str(cpu_lim))
+                if mem_lim:
+                    memory_limit += _parse_resource_value(str(mem_lim))
+
         pod_data.append({
             "name": pod.metadata.name,
             "namespace": pod.metadata.namespace,
             "node": pod.spec.node_name or "-",
             "cpu_request": round(cpu_request, 4),
             "memory_request": memory_request,
+            "cpu_limit": round(cpu_limit, 4) if cpu_limit > 0 else None,
+            "memory_limit": memory_limit if memory_limit > 0 else None,
             "cpu_usage": None,
             "memory_usage": None,
             "phase": pod.status.phase if pod.status else "Unknown",

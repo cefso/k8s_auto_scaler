@@ -19,6 +19,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { formatBytes } from '@/lib/utils'
+import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts'
 
 interface NodeMetricsViewProps {
   clusterId: number
@@ -58,45 +59,131 @@ export function NodeMetricsView({ clusterId }: NodeMetricsViewProps) {
   const totalMemory = nodes.reduce((sum: number, n: any) => sum + (n.memory_request || 0), 0)
   const usedMemory = nodes.reduce((sum: number, n: any) => sum + (n.memory_usage || 0), 0)
 
+  // 计算使用百分比
+  const cpuPercent = totalCpu && Number(totalCpu) > 0
+    ? Math.round((Number(usedCpu) / Number(totalCpu)) * 100)
+    : 0
+  const memoryPercent = totalMemory > 0
+    ? Math.round((usedMemory / totalMemory) * 100)
+    : 0
+
+  // 当前选中节点的数据
+  const selectedNodeData = selectedNode === '__all__'
+    ? null
+    : nodes.find((n: any) => n.name === selectedNode)
+  const nodeCpuPercent = selectedNodeData?.cpu_percent ?? cpuPercent
+  const nodeMemoryPercent = selectedNodeData?.memory_percent ?? memoryPercent
+  const nodeCpuUsage = selectedNodeData?.cpu_usage ?? usedCpu
+  const nodeMemUsage = selectedNodeData?.memory_usage ?? usedMemory
+  const nodeCpuTotal = selectedNodeData?.cpu_request ?? totalCpu
+  const nodeMemTotal = selectedNodeData?.memory_request ?? totalMemory
+
+  // 环形图数据
+  const cpuChartData = [
+    { name: '已用', value: Number(usedCpu), percent: cpuPercent },
+    { name: '剩余', value: Math.max(0, Number(totalCpu) - Number(usedCpu)), percent: 100 - cpuPercent },
+  ]
+  const memoryChartData = [
+    { name: '已用', value: usedMemory, percent: memoryPercent },
+    { name: '剩余', value: Math.max(0, totalMemory - usedMemory), percent: 100 - memoryPercent },
+  ]
+
   const getUsageColor = (usage?: number) => {
     if (usage === undefined || usage === null) return ''
-    if (usage >= 90) return 'text-error'
-    if (usage >= 70) return 'text-warning'
-    return 'text-success'
+    if (usage >= 90) return 'text-red-500'
+    if (usage >= 70) return 'text-yellow-500'
+    return 'text-green-500'
+  }
+
+  const getBarColor = (percent: number) => {
+    if (percent >= 90) return 'bg-red-500'
+    if (percent >= 70) return 'bg-yellow-500'
+    return 'bg-green-500'
+  }
+
+  const getChartColor = (percent: number) => {
+    if (percent >= 90) return '#ef4444' // red-500
+    if (percent >= 70) return '#f59e0b' // amber-500
+    return '#22c55e' // green-500
   }
 
   return (
     <div className="space-y-6">
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <Card>
-          <CardContent className="p-4 text-center">
-            <div className="text-sm text-muted-foreground mb-1">节点数</div>
-            <div className="text-2xl font-bold font-mono">{nodes.length || '-'}</div>
+      {/* Summary Cards with Charts */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* 节点数 Card */}
+        <Card className="flex flex-col">
+          <CardContent className="p-2 text-center">
+            <div className="text-sm text-muted-foreground">节点数</div>
+          </CardContent>
+          <CardContent className="flex-1 p-2 flex items-center justify-center">
+            <span className="text-4xl font-bold font-mono">{nodes.length || '-'}</span>
           </CardContent>
         </Card>
+
+        {/* CPU Chart */}
         <Card>
-          <CardContent className="p-4 text-center">
-            <div className="text-sm text-muted-foreground mb-1">CPU 总量</div>
-            <div className="text-2xl font-bold font-mono">{totalCpu} Cores</div>
+          <CardContent className="p-2 text-center">
+            <div className="text-sm text-muted-foreground">CPU 使用率</div>
+          </CardContent>
+          <CardContent className="p-2">
+            <div className="h-[80px] relative">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={cpuChartData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={25}
+                    outerRadius={38}
+                    dataKey="value"
+                    stroke="none"
+                  >
+                    <Cell fill={getChartColor(cpuPercent)} />
+                    <Cell fill="#e5e7eb" />
+                  </Pie>
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className={`text-lg font-bold ${getUsageColor(cpuPercent)}`}>{cpuPercent}%</span>
+              </div>
+            </div>
+            <div className="text-xs text-muted-foreground text-center">
+              {usedCpu} / {totalCpu} Cores
+            </div>
           </CardContent>
         </Card>
+
+        {/* Memory Chart */}
         <Card>
-          <CardContent className="p-4 text-center">
-            <div className="text-sm text-muted-foreground mb-1">CPU 使用</div>
-            <div className="text-2xl font-bold font-mono">{usedCpu} Cores</div>
+          <CardContent className="p-2 text-center">
+            <div className="text-sm text-muted-foreground">内存使用率</div>
           </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <div className="text-sm text-muted-foreground mb-1">内存总量</div>
-            <div className="text-2xl font-bold font-mono">{formatBytes(totalMemory)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 text-center">
-            <div className="text-sm text-muted-foreground mb-1">内存使用</div>
-            <div className="text-2xl font-bold font-mono">{formatBytes(usedMemory)}</div>
+          <CardContent className="p-2">
+            <div className="h-[80px] relative">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={memoryChartData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={25}
+                    outerRadius={38}
+                    dataKey="value"
+                    stroke="none"
+                  >
+                    <Cell fill={getChartColor(memoryPercent)} />
+                    <Cell fill="#e5e7eb" />
+                  </Pie>
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <span className={`text-lg font-bold ${getUsageColor(memoryPercent)}`}>{memoryPercent}%</span>
+              </div>
+            </div>
+            <div className="text-xs text-muted-foreground text-center">
+              {formatBytes(usedMemory)} / {formatBytes(totalMemory)}
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -128,13 +215,35 @@ export function NodeMetricsView({ clusterId }: NodeMetricsViewProps) {
                     <TableCell className="font-mono font-medium">{node.name}</TableCell>
                     <TableCell className="font-mono">{node.cpu_request ?? '-'} Cores</TableCell>
                     <TableCell className="font-mono">{node.cpu_limit ?? '-'} Cores</TableCell>
-                    <TableCell className={`font-mono ${getUsageColor(node.cpu_usage_percent)}`}>
-                      {node.cpu_usage != null ? `${node.cpu_usage} Cores (${node.cpu_usage_percent}%)` : '-'}
+                    <TableCell>
+                      {node.cpu_percent != null ? (
+                        <div className="space-y-1">
+                          <div className="text-xs font-mono">{node.cpu_usage} Cores</div>
+                          <div className="w-full bg-gray-200 rounded-full h-2 dark:bg-gray-700">
+                            <div
+                              className={`h-2 rounded-full ${getBarColor(node.cpu_percent)}`}
+                              style={{ width: `${Math.min(node.cpu_percent, 100)}%` }}
+                            />
+                          </div>
+                          <div className={`text-xs font-mono ${getUsageColor(node.cpu_percent)}`}>{node.cpu_percent}%</div>
+                        </div>
+                      ) : '-'}
                     </TableCell>
                     <TableCell className="font-mono">{formatBytes(node.memory_request)}</TableCell>
                     <TableCell className="font-mono">{formatBytes(node.memory_limit)}</TableCell>
-                    <TableCell className={`font-mono ${getUsageColor(node.memory_usage_percent)}`}>
-                      {node.memory_usage != null ? `${formatBytes(node.memory_usage)} (${node.memory_usage_percent}%)` : '-'}
+                    <TableCell>
+                      {node.memory_percent != null ? (
+                        <div className="space-y-1">
+                          <div className="text-xs font-mono">{formatBytes(node.memory_usage)}</div>
+                          <div className="w-full bg-gray-200 rounded-full h-2 dark:bg-gray-700">
+                            <div
+                              className={`h-2 rounded-full ${getBarColor(node.memory_percent)}`}
+                              style={{ width: `${Math.min(node.memory_percent, 100)}%` }}
+                            />
+                          </div>
+                          <div className={`text-xs font-mono ${getUsageColor(node.memory_percent)}`}>{node.memory_percent}%</div>
+                        </div>
+                      ) : '-'}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -164,7 +273,75 @@ export function NodeMetricsView({ clusterId }: NodeMetricsViewProps) {
           {topPodsLoading ? (
             <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-4">
+              {/* 节点资源环形图 */}
+              <div className="grid grid-cols-2 gap-4">
+                <Card>
+                  <CardContent className="p-2 text-center">
+                    <div className="text-sm text-muted-foreground">CPU 使用率</div>
+                  </CardContent>
+                  <CardContent className="p-2">
+                    <div className="h-[80px] relative">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={[{ name: '已用', value: Number(nodeCpuUsage) }, { name: '剩余', value: Math.max(0, Number(nodeCpuTotal) - Number(nodeCpuUsage)) }]}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={25}
+                            outerRadius={38}
+                            dataKey="value"
+                            stroke="none"
+                          >
+                            <Cell fill={getChartColor(nodeCpuPercent)} />
+                            <Cell fill="#e5e7eb" />
+                          </Pie>
+                        </PieChart>
+                      </ResponsiveContainer>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className={`text-lg font-bold ${getUsageColor(nodeCpuPercent)}`}>{nodeCpuPercent}%</span>
+                      </div>
+                    </div>
+                    <div className="text-xs text-muted-foreground text-center">
+                      {nodeCpuUsage} / {nodeCpuTotal} Cores
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-2 text-center">
+                    <div className="text-sm text-muted-foreground">内存使用率</div>
+                  </CardContent>
+                  <CardContent className="p-2">
+                    <div className="h-[80px] relative">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={[{ name: '已用', value: nodeMemUsage }, { name: '剩余', value: Math.max(0, nodeMemTotal - nodeMemUsage) }]}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={25}
+                            outerRadius={38}
+                            dataKey="value"
+                            stroke="none"
+                          >
+                            <Cell fill={getChartColor(nodeMemoryPercent)} />
+                            <Cell fill="#e5e7eb" />
+                          </Pie>
+                        </PieChart>
+                      </ResponsiveContainer>
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <span className={`text-lg font-bold ${getUsageColor(nodeMemoryPercent)}`}>{nodeMemoryPercent}%</span>
+                      </div>
+                    </div>
+                    <div className="text-xs text-muted-foreground text-center">
+                      {formatBytes(nodeMemUsage)} / {formatBytes(nodeMemTotal)}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Top Pods Lists */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* CPU Top 5 */}
               <div className="space-y-3">
                 <h3 className="text-sm font-medium text-muted-foreground">CPU 消耗 Top 5</h3>
@@ -185,7 +362,7 @@ export function NodeMetricsView({ clusterId }: NodeMetricsViewProps) {
                         <div className="flex-1 min-w-0">
                           <div className="font-mono text-sm truncate">{pod.namespace}/{pod.name}</div>
                           <div className="text-xs text-muted-foreground">
-                            {pod.cpu_usage || pod.cpu_request} Cores
+                            {pod.cpu_usage != null ? `${pod.cpu_usage}C` : '-'} / {pod.cpu_limit != null ? `${pod.cpu_limit}C` : '-'}
                           </div>
                         </div>
                       </div>
@@ -214,13 +391,14 @@ export function NodeMetricsView({ clusterId }: NodeMetricsViewProps) {
                         <div className="flex-1 min-w-0">
                           <div className="font-mono text-sm truncate">{pod.namespace}/{pod.name}</div>
                           <div className="text-xs text-muted-foreground">
-                            {formatBytes(pod.memory_usage || pod.memory_request)}
+                            {pod.memory_usage != null ? formatBytes(pod.memory_usage) : '-'} / {pod.memory_limit != null ? formatBytes(pod.memory_limit) : '-'}
                           </div>
                         </div>
                       </div>
                     ))}
                   </div>
                 )}
+              </div>
               </div>
             </div>
           )}

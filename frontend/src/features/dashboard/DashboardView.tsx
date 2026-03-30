@@ -41,13 +41,14 @@ export function DashboardView({ clusterId }: DashboardViewProps) {
         <StatCard label="Pod 运行中" value={podStats.running ?? '-'} accent="success" />
         <StatCard label="Pod 等待中" value={podStats.pending ?? '-'} accent="warning" />
         <StatCard label="Pod 异常" value={podStats.failed ?? '-'} accent="error" />
-        <StatCard label="Pod 已完成" value={podStats.succeeded ?? '-'} />
+        <StatCard label="Pod 已完成" value={podStats.succeeded ?? '-'} accent="success" />
         <StatCard label="Deployment" value={overview?.deployment_count ?? '-'} />
         <StatCard label="StatefulSet" value={overview?.statefulset_count ?? '-'} />
         <StatCard label="Ingress" value={overview?.ingress_count ?? '-'} />
         <StatCard label="ApisixRoute" value={overview?.apisixroute_count ?? '-'} />
         <StatCard label="ApisixTls" value={overview?.apisixtls_count ?? '-'} />
-        <StatCard label="IngressRoute" value={overview?.ingressroute_count ?? '-'} />
+        <StatCard label="IngressRouteTCP" value={overview?.ingressroutetcp_count ?? '-'} />
+        <StatCard label="IngressRouteUDP" value={overview?.ingressrouteudp_count ?? '-'} />
       </div>
 
       {/* Top Pods */}
@@ -67,7 +68,9 @@ export function DashboardView({ clusterId }: DashboardViewProps) {
                       i === 0 ? 'bg-yellow-500 text-black' : i === 1 ? 'bg-gray-400 text-black' : i === 2 ? 'bg-amber-700 text-white' : 'bg-muted'
                     }`}>{i + 1}</span>
                     <span className="flex-1 font-mono truncate">{pod.namespace}/{pod.name}</span>
-                    <span className="text-muted-foreground">{pod.cpu_usage != null ? `${pod.cpu_usage} Cores` : '-'}</span>
+                    <span className="text-muted-foreground">
+                      {pod.cpu_usage != null ? `${pod.cpu_usage}C` : '-'} / {pod.cpu_limit != null ? `${pod.cpu_limit}C` : '-'}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -92,7 +95,9 @@ export function DashboardView({ clusterId }: DashboardViewProps) {
                       i === 0 ? 'bg-yellow-500 text-black' : i === 1 ? 'bg-gray-400 text-black' : i === 2 ? 'bg-amber-700 text-white' : 'bg-muted'
                     }`}>{i + 1}</span>
                     <span className="flex-1 font-mono truncate">{pod.namespace}/{pod.name}</span>
-                    <span className="text-muted-foreground">{pod.memory_usage != null ? formatBytes(pod.memory_usage) : '-'}</span>
+                    <span className="text-muted-foreground">
+                      {pod.memory_usage != null ? formatBytes(pod.memory_usage) : '-'} / {pod.memory_limit != null ? formatBytes(pod.memory_limit) : '-'}
+                    </span>
                   </div>
                 ))}
               </div>

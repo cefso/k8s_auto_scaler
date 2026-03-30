@@ -4,8 +4,9 @@ import { useThemeStore } from '@/stores/themeStore'
 import { useQuery } from '@tanstack/react-query'
 import { clusterApi, searchApi } from '@/api'
 import { cn } from '@/lib/utils'
-import { MoonIcon, SunIcon, ServerIcon, ChevronRightIcon, Loader2 } from 'lucide-react'
+import { MoonIcon, SunIcon, ServerIcon, ChevronRightIcon, SearchIcon } from 'lucide-react'
 import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 
 const topNavItems = [
   { path: '/', label: '集群' },
@@ -127,7 +128,7 @@ export function AppLayout() {
     }
     const tab = typeMap[item.type]
     if (tab && clusterId) {
-      navigate(`/cluster/${clusterId}?tab=${tab}`)
+      navigate(`/cluster/${clusterId}?tab=${tab}&name=${encodeURIComponent(item.name)}`)
       setSearchResults([])
       setSearchKeyword('')
     }
@@ -166,16 +167,24 @@ export function AppLayout() {
         {/* 全局搜索 - 只在集群页面显示 */}
         {isClusterPage && clusterId && (
           <div className="relative ml-auto flex items-center gap-2">
-            <div className="relative">
+            <div className="relative flex items-center">
               <Input
                 type="text"
                 placeholder="搜索资源..."
                 value={searchKeyword}
                 onChange={(e) => setSearchKeyword(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                className="w-48 h-8"
+                className="w-48 h-8 pr-8"
               />
-              {searchLoading && <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin" />}
+              <Button
+                variant="ghost"
+                size="sm"
+                className="absolute right-0 h-8 px-2"
+                onClick={handleSearch}
+                disabled={searchLoading}
+              >
+                <SearchIcon className="h-4 w-4" />
+              </Button>
             </div>
             {searchResults.length > 0 && (
               <div className="absolute top-full right-0 mt-1 w-64 bg-card border rounded-md shadow-lg z-50 max-h-64 overflow-auto">
@@ -246,9 +255,10 @@ function SidebarContent({ clusterId, currentTab }: SidebarContentProps) {
 
   const toggleSection = (key: string) => {
     setExpandedSections((prev) => {
-      const next = new Set(prev)
-      if (next.has(key)) {
-        next.delete(key)
+      const next = new Set<string>()
+      // 如果当前已展开，则折叠；否则只展开当前点击的 section
+      if (prev.has(key)) {
+        // 折叠（不添加任何 section）
       } else {
         next.add(key)
       }

@@ -97,7 +97,7 @@ export function ResourceTable({ items, resourceType, isLoading, onAction, onBatc
                   {col.label}
                 </TableHead>
               ))}
-              {onAction && <TableHead className="text-right w-32">操作</TableHead>}
+              {onAction && <TableHead className="text-center w-32">操作</TableHead>}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -120,7 +120,7 @@ export function ResourceTable({ items, resourceType, isLoading, onAction, onBatc
                     </TableCell>
                   ))}
                   {onAction && (
-                    <TableCell className="text-right">
+                    <TableCell className="text-center">
                       <ActionButtons resourceType={resourceType} item={item} onAction={onAction} />
                     </TableCell>
                   )}
@@ -158,7 +158,7 @@ function ActionButtons({ resourceType, item, onAction }: ActionButtonsProps) {
   }
 
   return (
-    <div className="flex items-center justify-end gap-1">
+    <div className="flex items-center justify-center gap-1">
       {buttons.map((btn) => (
         <Button
           key={btn.action}
