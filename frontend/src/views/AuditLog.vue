@@ -1,21 +1,19 @@
 <template>
   <div class="audit-log-page">
     <div class="page-header">
-      <h1 class="page-title">操作审计日志</h1>
+      <div class="page-header-left">
+        <!-- 过滤器 -->
+        <select v-model="filterAction" class="form-control" @change="loadLogs">
+          <option value="">全部操作</option>
+          <option value="scale">扩缩容</option>
+          <option value="delete">删除</option>
+          <option value="create">创建</option>
+          <option value="update">更新</option>
+        </select>
+      </div>
       <div class="page-header-actions">
         <button class="btn btn-secondary" @click="loadLogs">刷新</button>
       </div>
-    </div>
-
-    <!-- 过滤器 -->
-    <div class="filters">
-      <select v-model="filterAction" class="form-control" @change="loadLogs">
-        <option value="">全部操作</option>
-        <option value="scale">扩缩容</option>
-        <option value="delete">删除</option>
-        <option value="create">创建</option>
-        <option value="update">更新</option>
-      </select>
     </div>
 
     <!-- 日志列表 -->
@@ -153,13 +151,21 @@ onMounted(() => {
   max-width: 1400px;
 }
 
-.filters {
+.page-header {
   display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 1rem;
   margin-bottom: 1rem;
 }
 
-.filters .form-control {
+.page-header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.page-header-left .form-control {
   width: auto;
   min-width: 150px;
 }

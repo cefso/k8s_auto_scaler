@@ -38,7 +38,7 @@
     </header>
 
     <div class="layout">
-      <aside v-if="!onSchedulePage && !onWorkloadDetailPage" class="sidebar">
+      <aside v-if="!onSchedulePage && !onWorkloadDetailPage && !onAuditPage" class="sidebar">
         <section class="sidebar-section">
           <h3 class="sidebar-title">已连接集群</h3>
           <div v-if="clusterStore.loading" class="sidebar-loading">加载中...</div>
@@ -307,6 +307,8 @@ const onClusterPage = computed(() => route.path.startsWith('/cluster/'))
 const onSchedulePage = computed(() => route.path === '/schedules')
 
 const onWorkloadDetailPage = computed(() => route.path.includes('/workload'))
+
+const onAuditPage = computed(() => route.path === '/audit')
 
 const currentTab = computed(() => route.query.tab as string || 'dashboard')
 
