@@ -151,8 +151,8 @@ export const eventsApi = {
 export const analysisApi = {
   getWorkloadHealth: (clusterId: number, namespace?: string) =>
     api.get(`/resources/${clusterId}/analysis/workload-health`, { params: namespace ? { namespace } : {} }),
-  getTopPods: (clusterId: number, limit: number = 5, sortBy: 'cpu' | 'memory' = 'cpu') =>
-    api.get(`/resources/${clusterId}/metrics/top-pods`, { params: { limit, sort_by: sortBy } }),
+  getTopPods: (clusterId: number, limit: number = 5, sortBy: 'cpu' | 'memory' = 'cpu', node?: string) =>
+    api.get(`/resources/${clusterId}/metrics/top-pods`, { params: { limit, sort_by: sortBy, node: node || undefined } }),
 }
 
 export const batchApi = {

@@ -384,6 +384,7 @@ async def get_top_pods_endpoint(
     limit: int = Query(5, ge=1, le=20, description="返回数量"),
     sort_by: str = Query("cpu", description="排序字段: cpu 或 memory"),
     namespace: str | None = Query(None, description="命名空间过滤（可选）"),
+    node: str | None = Query(None, description="节点名称过滤（可选）"),
     db: AsyncSession = Depends(get_db),
 ):
     """获取资源消耗最高的 Pod 列表（Top N）"""
@@ -396,5 +397,6 @@ async def get_top_pods_endpoint(
         limit=limit,
         sort_by=sort_by,
         namespace=namespace,
+        node=node,
     )
     return {"cluster_id": cluster_id, **result}

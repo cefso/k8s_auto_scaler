@@ -1508,6 +1508,7 @@ def get_top_pods(
     limit: int = 5,
     sort_by: str = "cpu",
     namespace: str = None,
+    node: str = None,
 ) -> dict:
     """获取资源消耗最高的 Pod 列表
 
@@ -1517,6 +1518,7 @@ def get_top_pods(
         limit: 返回数量，默认 5
         sort_by: 排序字段，cpu 或 memory
         namespace: 命名空间过滤（可选）
+        node: 节点名称过滤（可选）
 
     Returns:
         {"cpu_top": [...], "memory_top": [...]}
@@ -1526,6 +1528,9 @@ def get_top_pods(
     # 获取 Pod 列表
     if namespace:
         all_pods = v1.list_namespaced_pod(namespace=namespace)
+    elif node:
+        # 使用 field_selector 按节点过滤
+        all_pods = v1.list_pod_for_all_namespaces(field_selector=f"spec.nodeName={node}")
     else:
         all_pods = v1.list_pod_for_all_namespaces()
 
@@ -1546,6 +1551,7 @@ def get_top_pods(
         pod_data.append({
             "name": pod.metadata.name,
             "namespace": pod.metadata.namespace,
+            "node": pod.spec.node_name or "-",
             "cpu_request": round(cpu_request, 4),
             "memory_request": memory_request,
             "cpu_usage": None,
