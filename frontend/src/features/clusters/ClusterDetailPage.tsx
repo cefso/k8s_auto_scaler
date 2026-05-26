@@ -271,14 +271,7 @@ interface ClusterTabContentProps {
 
 function ClusterTabContent({ clusterId, tab, namespace, onAction, onBatchAction }: ClusterTabContentProps) {
   const ns = namespace || undefined
-
-  if (tab === 'dashboard') {
-    return <DashboardView clusterId={clusterId} />
-  }
-
-  if (tab === 'nodes') {
-    return <NodeMetricsView clusterId={clusterId} />
-  }
+  const isResourceTab = tab !== 'dashboard' && tab !== 'nodes'
 
   const { data, isLoading } = useQuery({
     queryKey: ['resources', clusterId, tab, ns],
@@ -303,8 +296,16 @@ function ClusterTabContent({ clusterId, tab, namespace, onAction, onBatchAction 
       const fn = apiMap[tab]
       return fn ? fn().then((res: any) => res.data) : Promise.resolve({ items: [] })
     },
-    enabled: !!clusterId,
+    enabled: !!clusterId && isResourceTab,
   })
+
+  if (tab === 'dashboard') {
+    return <DashboardView clusterId={clusterId} />
+  }
+
+  if (tab === 'nodes') {
+    return <NodeMetricsView clusterId={clusterId} />
+  }
 
   if (isLoading) {
     return <div className="flex justify-center py-8"><Loader2 className="h-6 w-6 animate-spin" /></div>
