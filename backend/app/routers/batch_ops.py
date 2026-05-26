@@ -14,6 +14,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.deps import CurrentUser, require_role
 from app.database import get_db
 from app.models import Cluster
 from app.services.k8s_service import get_api_client_for_cluster
@@ -56,7 +57,11 @@ async def _get_cluster(db: AsyncSession, cluster_id: int) -> Cluster:
 
 
 @router.post("/restart-pods")
-async def batch_restart_pods(request: BatchRestartPodsRequest, db: AsyncSession = Depends(get_db)):
+async def batch_restart_pods(
+    request: BatchRestartPodsRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role("operator")),
+):
     """批量重启 Pod（通过删除 Pod 实现，Kubernetes 会自动重新创建）"""
     if not request.items:
         raise HTTPException(status_code=400, detail="items 不能为空")
@@ -75,6 +80,7 @@ async def batch_restart_pods(request: BatchRestartPodsRequest, db: AsyncSession 
             resource_name=item["name"],
             namespace=item["namespace"],
             cluster_id=request.cluster_id,
+            operator=current_user.username,
             details={"batch": True},
         )
 
@@ -87,7 +93,11 @@ async def batch_restart_pods(request: BatchRestartPodsRequest, db: AsyncSession 
 
 
 @router.post("/delete-pods")
-async def batch_delete_pods(request: BatchDeletePodsRequest, db: AsyncSession = Depends(get_db)):
+async def batch_delete_pods(
+    request: BatchDeletePodsRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role("operator")),
+):
     """批量删除 Pod"""
     if not request.items:
         raise HTTPException(status_code=400, detail="items 不能为空")
@@ -106,6 +116,7 @@ async def batch_delete_pods(request: BatchDeletePodsRequest, db: AsyncSession = 
             resource_name=item["name"],
             namespace=item["namespace"],
             cluster_id=request.cluster_id,
+            operator=current_user.username,
             details={"batch": True},
         )
 
@@ -118,7 +129,11 @@ async def batch_delete_pods(request: BatchDeletePodsRequest, db: AsyncSession = 
 
 
 @router.post("/update-labels")
-async def batch_update_labels(request: BatchUpdateLabelsRequest, db: AsyncSession = Depends(get_db)):
+async def batch_update_labels(
+    request: BatchUpdateLabelsRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role("operator")),
+):
     """批量更新 Pod 的 Labels"""
     if not request.items:
         raise HTTPException(status_code=400, detail="items 不能为空")
@@ -139,6 +154,7 @@ async def batch_update_labels(request: BatchUpdateLabelsRequest, db: AsyncSessio
             resource_name=item["name"],
             namespace=item["namespace"],
             cluster_id=request.cluster_id,
+            operator=current_user.username,
             details={"labels": request.labels, "batch": True},
         )
 

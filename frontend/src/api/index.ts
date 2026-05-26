@@ -4,11 +4,65 @@
  * 通过 Vite 代理将 /api 转发至后端，接口与后端 routers 对应。
  */
 import axios from 'axios'
+import { useAuthStore } from '@/stores/authStore'
 
 const api = axios.create({
   baseURL: '/api',
   headers: { 'Content-Type': 'application/json' },
 })
+
+api.interceptors.request.use(config => {
+  const token = useAuthStore.getState().token
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
+api.interceptors.response.use(
+  res => res,
+  err => {
+    if (err.response?.status === 401 && !err.config?.url?.includes('/auth/login')) {
+      useAuthStore.getState().clearAuth()
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login'
+      }
+    }
+    return Promise.reject(err)
+  }
+)
+
+export interface AuthUser {
+  id: number
+  username: string
+  display_name: string | null
+  role: string
+  is_active: boolean
+}
+
+export const authApi = {
+  login: (username: string, password: string) =>
+    api.post<{ access_token: string; token_type: string; user: AuthUser }>('/auth/login', {
+      username,
+      password,
+    }),
+  me: () => api.get<AuthUser>('/auth/me'),
+}
+
+export const userApi = {
+  list: () => api.get<AuthUser[]>('/users'),
+  create: (data: {
+    username: string
+    password: string
+    display_name?: string
+    role: string
+  }) => api.post<AuthUser>('/users', data),
+  update: (id: number, data: { display_name?: string; role?: string; is_active?: boolean }) =>
+    api.put<AuthUser>(`/users/${id}`, data),
+  resetPassword: (id: number, new_password: string) =>
+    api.post(`/users/${id}/reset-password`, { new_password }),
+  delete: (id: number) => api.delete(`/users/${id}`),
+}
 
 export interface Cluster {
   id: number

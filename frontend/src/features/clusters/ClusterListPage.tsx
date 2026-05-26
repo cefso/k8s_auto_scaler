@@ -24,9 +24,11 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Loader2, PlusIcon, Trash2, RefreshCw, CheckCircle, XCircle, FileCode } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/stores/authStore'
 
 export default function ClusterListPage() {
   const navigate = useNavigate()
+  const isAdmin = useAuthStore(s => s.isAdmin)
   const queryClient = useQueryClient()
   const [showAddModal, setShowAddModal] = useState(false)
   const [addError, setAddError] = useState('')
@@ -118,24 +120,26 @@ export default function ClusterListPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">集群管理</h1>
-        <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
-          <DialogTrigger asChild>
-            <Button>
-              <PlusIcon className="h-4 w-4 mr-2" />
-              添加集群
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>添加集群</DialogTitle>
-            </DialogHeader>
-            <AddClusterForm
-              onSubmit={(data) => createMutation.mutate(data)}
-              isLoading={createMutation.isPending}
-              error={addError}
-            />
-          </DialogContent>
-        </Dialog>
+        {isAdmin() && (
+          <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
+            <DialogTrigger asChild>
+              <Button>
+                <PlusIcon className="h-4 w-4 mr-2" />
+                添加集群
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>添加集群</DialogTitle>
+              </DialogHeader>
+              <AddClusterForm
+                onSubmit={(data) => createMutation.mutate(data)}
+                isLoading={createMutation.isPending}
+                error={addError}
+              />
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       <Card>
@@ -192,22 +196,26 @@ export default function ClusterListPage() {
                           <RefreshCw className={cn('h-4 w-4', testingId === cluster.id && 'animate-spin')} />
                           测试连接
                         </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setUpdateKubeconfigId(cluster.id)}
-                        >
-                          <FileCode className="h-4 w-4" />
-                          更新kubeconfig
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDelete(cluster)}
-                          disabled={deleteMutation.isPending}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {isAdmin() && (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setUpdateKubeconfigId(cluster.id)}
+                            >
+                              <FileCode className="h-4 w-4" />
+                              更新kubeconfig
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleDelete(cluster)}
+                              disabled={deleteMutation.isPending}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

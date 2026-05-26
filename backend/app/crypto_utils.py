@@ -2,45 +2,79 @@
 kubeconfig 加密工具
 
 使用 Fernet 对称加密保护存储在数据库中的 kubeconfig 内容。
-密钥可通过环境变量 KUBECONFIG_ENCRYPTION_KEY 配置，或从 SECRET_KEY 派生（仅开发用）。
+生产环境必须设置 KUBECONFIG_ENCRYPTION_KEY。
 """
 import base64
+import logging
 import os
-from cryptography.fernet import Fernet
+
+from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 
+from app.config import settings
+
+logger = logging.getLogger(__name__)
+
+_fernet_key_cache: bytes | None = None
+
+
+def validate_crypto_config() -> None:
+    """启动时校验加密配置，生产环境禁止静默回退。"""
+    raw = os.environ.get("KUBECONFIG_ENCRYPTION_KEY", "").strip()
+    if raw:
+        try:
+            Fernet(raw.encode())
+        except Exception as e:
+            raise ValueError(
+                "KUBECONFIG_ENCRYPTION_KEY 格式无效，请使用 Fernet.generate_key() 生成"
+            ) from e
+        return
+
+    if not settings.DEBUG:
+        raise ValueError(
+            "生产环境必须设置 KUBECONFIG_ENCRYPTION_KEY（DEBUG=false 时不允许从 SECRET_KEY 派生）"
+        )
+    logger.warning(
+        "未设置 KUBECONFIG_ENCRYPTION_KEY，开发模式使用 SECRET_KEY 派生密钥，仅限本地调试"
+    )
+
 
 def _get_fernet_key() -> bytes:
-    """
-    获取 Fernet 加密密钥。
+    global _fernet_key_cache
+    if _fernet_key_cache is not None:
+        return _fernet_key_cache
 
-    优先级：KUBECONFIG_ENCRYPTION_KEY（格式需为 Fernet.generate_key() 输出）
-          > SECRET_KEY 经 PBKDF2 派生（开发环境回退）
-    """
-    raw = os.environ.get("KUBECONFIG_ENCRYPTION_KEY")
+    raw = os.environ.get("KUBECONFIG_ENCRYPTION_KEY", "").strip()
     if raw:
-        raw = raw.strip()
         try:
-            Fernet(raw.encode())  # 验证格式
-            return raw.encode()
-        except Exception:
-            pass
-    # 从 SECRET_KEY 派生（开发回退，生产务必设置 KUBECONFIG_ENCRYPTION_KEY）
+            Fernet(raw.encode())
+            _fernet_key_cache = raw.encode()
+            return _fernet_key_cache
+        except Exception as e:
+            raise ValueError("KUBECONFIG_ENCRYPTION_KEY 格式无效") from e
+
+    if not settings.DEBUG:
+        raise ValueError("生产环境必须设置 KUBECONFIG_ENCRYPTION_KEY")
+
     salt = b"k8s_auto_scaler_kubeconfig"
     kdf = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt, iterations=100000)
     secret = os.environ.get("SECRET_KEY", "dev-secret-change-in-production")
     derived = kdf.derive(secret.encode())
-    return base64.urlsafe_b64encode(derived)
+    _fernet_key_cache = base64.urlsafe_b64encode(derived)
+    return _fernet_key_cache
 
 
 def encrypt_kubeconfig(content: str) -> str:
-    """加密 kubeconfig 明文，返回 URL-safe base64 编码的密文。"""
     f = Fernet(_get_fernet_key())
     return f.encrypt(content.encode("utf-8")).decode("ascii")
 
 
 def decrypt_kubeconfig(encrypted: str) -> str:
-    """解密 kubeconfig 密文，返回明文 YAML 字符串。"""
     f = Fernet(_get_fernet_key())
-    return f.decrypt(encrypted.encode("ascii")).decode("utf-8")
+    try:
+        return f.decrypt(encrypted.encode("ascii")).decode("utf-8")
+    except InvalidToken as e:
+        raise ValueError(
+            "kubeconfig 解密失败，请检查 KUBECONFIG_ENCRYPTION_KEY 是否与加密时一致"
+        ) from e

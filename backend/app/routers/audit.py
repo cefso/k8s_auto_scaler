@@ -6,10 +6,10 @@
 """
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select, desc
+from sqlalchemy import func, select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db, AsyncSessionLocal
@@ -42,7 +42,7 @@ async def create_audit_log(
                 namespace=namespace,
                 cluster_id=cluster_id,
                 details=json.dumps(details) if details else None,
-                timestamp=datetime.utcnow(),
+                timestamp=datetime.now(timezone.utc),
             )
             db.add(log)
             await db.commit()
@@ -63,31 +63,20 @@ async def get_audit_logs(
 
     支持按集群 ID 和操作类型过滤。
     """
-    query = select(AuditLog)
-
+    filters = []
     if cluster_id is not None:
-        query = query.where(AuditLog.cluster_id == cluster_id)
+        filters.append(AuditLog.cluster_id == cluster_id)
     if action is not None:
-        query = query.where(AuditLog.action == action)
+        filters.append(AuditLog.action == action)
 
-    # 按时间倒序
-    query = query.order_by(desc(AuditLog.timestamp))
-
-    # 分页
+    query = select(AuditLog).where(*filters).order_by(desc(AuditLog.timestamp))
     query = query.offset(offset).limit(limit)
 
     result = await db.execute(query)
     logs = result.scalars().all()
 
-    # 获取总数
-    count_query = select(AuditLog)
-    if cluster_id is not None:
-        count_query = count_query.where(AuditLog.cluster_id == cluster_id)
-    if action is not None:
-        count_query = count_query.where(AuditLog.action == action)
-
-    total_result = await db.execute(count_query)
-    total = len(total_result.scalars().all())
+    count_query = select(func.count(AuditLog.id)).where(*filters)
+    total = await db.scalar(count_query) or 0
 
     items = []
     for log in logs:

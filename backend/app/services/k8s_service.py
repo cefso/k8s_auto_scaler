@@ -609,18 +609,18 @@ def _ensure_helm() -> str | None:
         import tarfile
         import zipfile  # noqa: F401
 
-        # 下载
-        tar_path = tempfile.mktemp(suffix=".tar.gz")
-        urllib.request.urlretrieve(url, tar_path)
-
-        # 解压
-        with tarfile.open(tar_path, "r:gz") as tar:
-            for member in tar.getmembers():
-                if member.name.endswith("/helm") or member.name == "helm":
-                    member.name = "helm"
-                    tar.extract(member, helm_dir)
-
-        os.unlink(tar_path)
+        with tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False) as tmp:
+            tar_path = tmp.name
+        try:
+            urllib.request.urlretrieve(url, tar_path)
+            with tarfile.open(tar_path, "r:gz") as tar:
+                for member in tar.getmembers():
+                    if member.name.endswith("/helm") or member.name == "helm":
+                        member.name = "helm"
+                        tar.extract(member, helm_dir, filter="data")
+        finally:
+            if os.path.exists(tar_path):
+                os.unlink(tar_path)
         os.chmod(helm_path, 0o755)
         logger.info(f"helm installed to {helm_path}")
         return helm_path
@@ -1672,6 +1672,25 @@ def scale_statefulset(
     except ApiException as e:
         logger.error(f"StatefulSet 扩缩容失败: {namespace}/{name}, 原因: {e.reason}")
         return {"success": False, "message": str(e.reason)}
+
+
+def validate_workload_exists(
+    api_client, resource_type: str, namespace: str, name: str
+) -> None:
+    """校验 Deployment/StatefulSet 是否存在，不存在时抛出 ValueError。"""
+    apps_v1 = client.AppsV1Api(api_client)
+    rt = resource_type.lower()
+    try:
+        if rt == "deployment":
+            apps_v1.read_namespaced_deployment(name=name, namespace=namespace)
+        elif rt == "statefulset":
+            apps_v1.read_namespaced_stateful_set(name=name, namespace=namespace)
+        else:
+            raise ValueError(f"不支持的资源类型: {resource_type}")
+    except ApiException as e:
+        if e.status == 404:
+            raise ValueError(f"资源 {namespace}/{name} 不存在") from e
+        raise ValueError(f"校验资源失败: {e.reason}") from e
 
 
 def _parse_cpu_value(value: str) -> float:

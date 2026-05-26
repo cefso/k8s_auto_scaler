@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
+from app.auth.deps import CurrentUser, require_role
 from app.database import get_db
 from app.scheduler import add_schedule_to_scheduler, remove_schedule_from_scheduler
 from app.models import Cluster, ScalingSchedule
@@ -23,6 +24,7 @@ from app.services.k8s_service import (
     get_api_client_for_cluster,
     scale_deployment,
     scale_statefulset,
+    validate_workload_exists,
 )
 from app.routers.audit import create_audit_log
 
@@ -34,6 +36,7 @@ router = APIRouter(prefix="/api/scaling", tags=["scaling"])
 async def list_schedules(
     cluster_id: int | None = None,
     db: AsyncSession = Depends(get_db),
+    _: CurrentUser = Depends(require_role("viewer")),
 ):
     """列出所有定时扩缩容任务"""
     q = select(ScalingSchedule).join(Cluster)
@@ -48,6 +51,7 @@ async def list_schedules(
 async def create_schedule(
     data: ScalingScheduleCreate,
     db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role("operator")),
 ):
     """创建定时扩缩容任务"""
     # 验证集群存在
@@ -57,20 +61,33 @@ async def create_schedule(
         logger.warning(f"创建定时任务失败: 集群 id={data.cluster_id} 不存在")
         raise HTTPException(status_code=404, detail="集群不存在")
 
+    api_client = get_api_client_for_cluster(cluster)
+    try:
+        validate_workload_exists(
+            api_client, data.resource_type, data.namespace, data.resource_name
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
     schedule = ScalingSchedule(**data.model_dump())
     db.add(schedule)
     await db.commit()
     await db.refresh(schedule)
     if schedule.is_enabled:
-        add_schedule_to_scheduler(schedule)
+        try:
+            add_schedule_to_scheduler(schedule)
+        except Exception as e:
+            await db.delete(schedule)
+            await db.commit()
+            raise HTTPException(status_code=400, detail=f"定时任务注册失败: {e}")
 
-    # 审计日志
     await create_audit_log(
         action="create",
         resource_type="ScalingSchedule",
         resource_name=f"{schedule.namespace}/{schedule.resource_name}",
         namespace=schedule.namespace,
         cluster_id=schedule.cluster_id,
+        operator=current_user.username,
         details={
             "schedule_id": schedule.id,
             "target_replicas": schedule.target_replicas,
@@ -89,6 +106,7 @@ async def update_schedule(
     schedule_id: int,
     data: ScalingScheduleUpdate,
     db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role("operator")),
 ):
     """更新定时任务（目标副本数、Cron 表达式、启用状态等）"""
     result = await db.execute(select(ScalingSchedule).where(ScalingSchedule.id == schedule_id))
@@ -100,19 +118,36 @@ async def update_schedule(
     for k, v in data.model_dump(exclude_unset=True).items():
         setattr(schedule, k, v)
 
+    result = await db.execute(select(Cluster).where(Cluster.id == schedule.cluster_id))
+    cluster = result.scalar_one_or_none()
+    if cluster:
+        api_client = get_api_client_for_cluster(cluster)
+        try:
+            validate_workload_exists(
+                api_client,
+                schedule.resource_type,
+                schedule.namespace,
+                schedule.resource_name,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
     await db.commit()
     await db.refresh(schedule)
     remove_schedule_from_scheduler(schedule.id)
     if schedule.is_enabled:
-        add_schedule_to_scheduler(schedule)
+        try:
+            add_schedule_to_scheduler(schedule)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"定时任务注册失败: {e}")
 
-    # 审计日志
     await create_audit_log(
         action="update",
         resource_type="ScalingSchedule",
         resource_name=f"{schedule.namespace}/{schedule.resource_name}",
         namespace=schedule.namespace,
         cluster_id=schedule.cluster_id,
+        operator=current_user.username,
         details={"schedule_id": schedule.id, "updates": data.model_dump(exclude_unset=True)},
     )
 
@@ -124,6 +159,7 @@ async def update_schedule(
 async def delete_schedule(
     schedule_id: int,
     db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role("operator")),
 ):
     """删除定时任务"""
     result = await db.execute(select(ScalingSchedule).where(ScalingSchedule.id == schedule_id))
@@ -150,6 +186,7 @@ async def delete_schedule(
         resource_name=f"{schedule_info['namespace']}/{schedule_info['resource_name']}",
         namespace=schedule_info["namespace"],
         cluster_id=schedule_info["cluster_id"],
+        operator=current_user.username,
         details=schedule_info,
     )
 
@@ -162,6 +199,7 @@ async def scale_resource(
     cluster_id: int,
     body: ScaleRequest,
     db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(require_role("operator")),
 ):
     """立即执行扩缩容"""
     namespace = body.namespace
@@ -197,6 +235,7 @@ async def scale_resource(
         resource_name=resource_name,
         namespace=namespace,
         cluster_id=cluster_id,
+        operator=current_user.username,
         details={"replicas": replicas},
     )
 
