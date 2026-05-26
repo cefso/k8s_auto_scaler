@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, WebSocket, WebSock
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.auth.deps import get_user_from_token
 from app.database import get_db, AsyncSessionLocal
 from app.models import Cluster
 from app.services.k8s_service import get_api_client_for_cluster
@@ -100,6 +101,7 @@ async def websocket_pod_logs(
     pod_name: str,
     container: Optional[str] = None,
     tail_lines: int = 100,
+    access_token: Optional[str] = None,
 ):
     """WebSocket 流式获取 Pod 实时日志
 
@@ -110,8 +112,18 @@ async def websocket_pod_logs(
     - 错误: {"type": "error", "content": "..."}
     - 完成: {"type": "done"}
     """
-    # 手动获取数据库会话，避免连接池耗尽
+    token = access_token
+    if not token:
+        auth_header = websocket.headers.get("authorization", "")
+        if auth_header.lower().startswith("bearer "):
+            token = auth_header[7:].strip()
+
     async with AsyncSessionLocal() as db:
+        user = await get_user_from_token(token or "", db)
+        if not user:
+            await websocket.close(code=4401, reason="未登录或凭证无效")
+            return
+
         result = await db.execute(select(Cluster).where(Cluster.id == cluster_id))
         cluster = result.scalar_one_or_none()
         if not cluster:
@@ -124,8 +136,8 @@ async def websocket_pod_logs(
     try:
         api_client = get_api_client_for_cluster(cluster)
     except Exception as e:
-        logger.error(f"创建 API 客户端失败: {e}")
-        await websocket.close(code=4001, reason=f"集群配置错误: {str(e)}")
+        logger.error("创建 API 客户端失败: %s", e)
+        await websocket.close(code=4001, reason="集群配置错误")
         return
 
     await websocket.accept()

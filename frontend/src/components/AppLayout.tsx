@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Outlet, NavLink, useParams, useLocation, useNavigate } from 'react-router-dom'
 import { useThemeStore } from '@/stores/themeStore'
+import { useAuthStore } from '@/stores/authStore'
 import { useQuery } from '@tanstack/react-query'
 import { clusterApi, searchApi } from '@/api'
 import { cn } from '@/lib/utils'
@@ -8,11 +9,12 @@ import { MoonIcon, SunIcon, ServerIcon, ChevronRightIcon, SearchIcon } from 'luc
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 
-const topNavItems = [
+const mainNavItems = [
   { path: '/', label: '集群' },
   { path: '/schedules', label: '定时扩缩容' },
-  { path: '/audit', label: '审计日志' },
 ]
+
+const auditNavItem = { path: '/audit', label: '审计日志' }
 
 // 侧边栏分类
 const sidebarSections = [
@@ -79,9 +81,18 @@ const sidebarSections = [
 
 export function AppLayout() {
   const { theme, toggleTheme } = useThemeStore()
+  const user = useAuthStore(s => s.user)
+  const clearAuth = useAuthStore(s => s.clearAuth)
+  const isAdmin = useAuthStore(s => s.isAdmin)
   const location = useLocation()
   const navigate = useNavigate()
   const { id: clusterId } = useParams()
+
+  const topNavItems = [
+    ...mainNavItems,
+    ...(isAdmin() ? [{ path: '/users', label: '用户管理' }] : []),
+    auditNavItem,
+  ]
 
   // 判断是否在集群详情页
   const isClusterPage = location.pathname.startsWith('/cluster/') && location.pathname !== '/cluster/'
@@ -164,9 +175,28 @@ export function AppLayout() {
           )
         })}
 
+        <div className="ml-auto flex items-center gap-3">
+          {user && (
+            <span className="text-sm text-muted-foreground">
+              {user.display_name || user.username}
+              <span className="ml-1 text-xs">({user.role})</span>
+            </span>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              clearAuth()
+              navigate('/login')
+            }}
+          >
+            退出登录
+          </Button>
+        </div>
+
         {/* 全局搜索 - 只在集群页面显示 */}
         {isClusterPage && clusterId && (
-          <div className="relative ml-auto flex items-center gap-2">
+          <div className="relative flex items-center gap-2">
             <div className="relative flex items-center">
               <Input
                 type="text"

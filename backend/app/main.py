@@ -6,14 +6,29 @@ K8s Auto Scaler Dashboard 主应用入口
 """
 import logging
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 
+from app.auth.bootstrap import bootstrap_admin_user
+from app.auth.deps import get_current_user
 from app.config import settings
+from app.crypto_utils import validate_crypto_config
 from app.database import init_db, migrate_kubeconfig_to_encrypted, AsyncSessionLocal
 from app.models import Cluster, ScalingSchedule
-from app.routers import clusters, resources, scaling, logs, analysis, batch_ops, search, audit
+from app.routers import (
+    auth,
+    users,
+    clusters,
+    resources,
+    scaling,
+    logs,
+    analysis,
+    batch_ops,
+    search,
+    audit,
+)
 from app.scheduler import scheduler, add_schedule_to_scheduler
 
 logging.basicConfig(
@@ -21,6 +36,8 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+_auth_required = [Depends(get_current_user)]
 
 
 async def load_schedules_on_startup():
@@ -32,14 +49,15 @@ async def load_schedules_on_startup():
         schedules = result.scalars().all()
         for s in schedules:
             add_schedule_to_scheduler(s)
-    logger.info(f"已加载 {len(schedules)} 个定时扩缩容任务")
+    logger.info("已加载 %s 个定时扩缩容任务", len(schedules))
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """FastAPI 生命周期：启动时初始化 DB、迁移、调度器；关闭时停止调度器。"""
+    validate_crypto_config()
     await init_db()
     await migrate_kubeconfig_to_encrypted()
+    await bootstrap_admin_user()
     if not scheduler.running:
         scheduler.start()
         await load_schedules_on_startup()
@@ -57,20 +75,22 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origin_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.include_router(clusters.router)
-app.include_router(resources.router)
-app.include_router(scaling.router)
-app.include_router(logs.router)
-app.include_router(analysis.router)
-app.include_router(batch_ops.router)
-app.include_router(search.router)
-app.include_router(audit.router)
+app.include_router(auth.router)
+app.include_router(users.router, dependencies=_auth_required)
+app.include_router(clusters.router, dependencies=_auth_required)
+app.include_router(resources.router, dependencies=_auth_required)
+app.include_router(scaling.router, dependencies=_auth_required)
+app.include_router(logs.router, dependencies=_auth_required)
+app.include_router(analysis.router, dependencies=_auth_required)
+app.include_router(batch_ops.router, dependencies=_auth_required)
+app.include_router(search.router, dependencies=_auth_required)
+app.include_router(audit.router, dependencies=_auth_required)
 
 
 @app.get("/")
@@ -81,6 +101,7 @@ async def root():
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(
         "app.main:app",
         host="0.0.0.0",

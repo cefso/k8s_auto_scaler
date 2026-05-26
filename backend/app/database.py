@@ -34,11 +34,10 @@ class Base(DeclarativeBase):
 
 
 async def get_db():
-    """FastAPI 依赖：获取异步数据库会话，请求结束时自动提交或回滚。"""
+    """FastAPI 依赖：获取异步数据库会话；由路由显式 commit。"""
     async with AsyncSessionLocal() as session:
         try:
             yield session
-            await session.commit()
         except Exception:
             await session.rollback()
             raise

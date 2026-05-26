@@ -42,3 +42,6 @@ Thumbs.db
 *.log
 *.tmp
 .cache/
+
+# 环境配置（含密钥）
+.env

@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/select'
 import { Loader2, Download, Trash2, Pause, Play } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/stores/authStore'
 
 interface LogViewerProps {
   clusterId: number
@@ -61,8 +62,15 @@ export function LogViewer({ clusterId, namespace, podName, initialContainer }: L
 
   // WebSocket connection
   const connectWebSocket = useCallback(() => {
+    const token = useAuthStore.getState().token
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const wsUrl = `${protocol}//${window.location.host}/api/logs/ws/${clusterId}/pod?namespace=${namespace}&pod_name=${podName}&container=${selectedContainer}`
+    const params = new URLSearchParams({
+      namespace,
+      pod_name: podName,
+      container: selectedContainer,
+    })
+    if (token) params.set('access_token', token)
+    const wsUrl = `${protocol}//${window.location.host}/api/logs/ws/${clusterId}/pod?${params.toString()}`
 
     const ws = new WebSocket(wsUrl)
 

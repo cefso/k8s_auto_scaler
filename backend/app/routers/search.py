@@ -59,8 +59,17 @@ def search_crd_resources(
         {"group": "traefik.containo.us", "version": "v1", "plural": "ingressrouteudps", "type": "IngressRouteUDP"},
     ]
 
+    type_aliases = {
+        "apisixroute": "apisixroutes",
+        "apisixtls": "apisixtlses",
+        "ingressroute": "ingressroutes",
+        "ingressroutetcp": "ingressroutetcps",
+        "ingressrouteudp": "ingressrouteudps",
+    }
+    normalized_type = type_aliases.get(resource_type, resource_type) if resource_type else None
+
     for crd in crds:
-        if resource_type is None or resource_type == crd["plural"]:
+        if normalized_type is None or normalized_type == crd["plural"]:
             try:
                 items = custom_api.list_cluster_custom_object(
                     group=crd["group"],
@@ -164,7 +173,7 @@ def search_resources(
                         "name": svc.metadata.name,
                         "namespace": svc.metadata.namespace,
                         "cluster_ip": svc.spec.cluster_ip if svc.spec else "-",
-                        " ports": [p.port for p in svc.spec.ports] if svc.spec and svc.spec.ports else [],
+                        "ports": [p.port for p in svc.spec.ports] if svc.spec and svc.spec.ports else [],
                     })
         except Exception as e:
             logger.warning(f"搜索 Service 失败: {e}")

@@ -5,10 +5,29 @@ SQLAlchemy 数据库模型
 - ScalingSchedule: 定时扩缩容任务，关联 Cluster
 - AuditLog: 操作审计日志
 """
-from datetime import datetime
+from datetime import datetime, timezone
+
 from sqlalchemy import String, Integer, DateTime, Text, ForeignKey, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+class User(Base):
+    """Dashboard 登录用户（由 admin 创建，无自助注册）。"""
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    username: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=True)
+    role: Mapped[str] = mapped_column(String(20), nullable=False, default="viewer")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
 
 class Cluster(Base):
@@ -20,9 +39,9 @@ class Cluster(Base):
     display_name: Mapped[str] = mapped_column(String(255), nullable=True)
     kubeconfig_encrypted: Mapped[str] = mapped_column(Text, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
+
     scaling_schedules: Mapped[list["ScalingSchedule"]] = relationship(
         "ScalingSchedule", back_populates="cluster", cascade="all, delete-orphan"
     )
@@ -51,8 +70,8 @@ class ScalingSchedule(Base):
     description: Mapped[str] = mapped_column(String(500), nullable=True)
     is_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=_utcnow, onupdate=_utcnow)
 
     cluster: Mapped["Cluster"] = relationship("Cluster", back_populates="scaling_schedules")
 
@@ -69,4 +88,4 @@ class AuditLog(Base):
     namespace: Mapped[str] = mapped_column(String(255), nullable=True)
     cluster_id: Mapped[int] = mapped_column(Integer, ForeignKey("clusters.id"), nullable=True)
     details: Mapped[str] = mapped_column(Text, nullable=True)  # JSON 变更详情
-    timestamp: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=_utcnow)

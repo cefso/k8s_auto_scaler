@@ -69,15 +69,24 @@ async def _run_scale_job(schedule_id: int):
 
 def add_schedule_to_scheduler(schedule: ScalingSchedule):
     """将定时任务注册到 APScheduler，job_id 为 schedule_{id}。"""
-    trigger = CronTrigger.from_crontab(schedule.cron_expression, timezone=schedule.timezone)
-    scheduler.add_job(
-        _run_scale_job,
-        trigger=trigger,
-        id=f"schedule_{schedule.id}",
-        args=[schedule.id],
-        replace_existing=True,
+    try:
+        trigger = CronTrigger.from_crontab(schedule.cron_expression, timezone=schedule.timezone)
+        scheduler.add_job(
+            _run_scale_job,
+            trigger=trigger,
+            id=f"schedule_{schedule.id}",
+            args=[schedule.id],
+            replace_existing=True,
+        )
+    except Exception as e:
+        logger.error("添加定时任务失败: %s - %s", schedule.id, e)
+        raise
+    logger.info(
+        "已添加定时任务: %s - %s @ %s",
+        schedule.id,
+        schedule.resource_name,
+        schedule.cron_expression,
     )
-    logger.info(f"已添加定时任务: {schedule.id} - {schedule.resource_name} @ {schedule.cron_expression}")
 
 
 def remove_schedule_from_scheduler(schedule_id: int):
