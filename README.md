@@ -1,5 +1,7 @@
 # K8s Auto Scaler Dashboard
 
+[![CI](https://github.com/cefso/k8s_auto_scaler/actions/workflows/ci.yml/badge.svg)](https://github.com/cefso/k8s_auto_scaler/actions/workflows/ci.yml)
+
 Kubernetes 集群资源管理仪表盘，支持多集群、kubeconfig 加密存储、资源查询和定时扩缩容。
 
 ## 项目简介
@@ -79,6 +81,43 @@ npm run dev
 2. 点击「添加集群」粘贴 kubeconfig 内容
 3. 在侧边栏选择集群，进入对应资源页面（默认显示集群概览 Dashboard）
 4. 在「定时扩缩容」页面配置 Cron 任务
+
+### 4. Docker Compose
+
+```bash
+cp .env.example .env
+# 编辑 .env，填写 KUBECONFIG_ENCRYPTION_KEY 等
+docker compose up -d --build
+```
+
+- 后端：http://localhost:8082
+- 前端：http://localhost:5173
+
+### 5. 从 GHCR 拉取镜像
+
+合并到 `main` 或打 `v*` 标签后，GitHub Actions 会自动构建并推送镜像到 GHCR：
+
+- `ghcr.io/cefso/k8s-scaler-backend:latest`
+- `ghcr.io/cefso/k8s-scaler-frontend:latest`
+
+在服务器上使用预构建镜像时，可修改 `docker-compose.yml` 中的 `build` 为 `image`：
+
+```yaml
+services:
+  backend:
+    image: ghcr.io/cefso/k8s-scaler-backend:latest
+  frontend:
+    image: ghcr.io/cefso/k8s-scaler-frontend:latest
+```
+
+私有包需先登录：`echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin`
+
+## CI/CD
+
+| 工作流 | 触发条件 | 作用 |
+|--------|----------|------|
+| [CI](.github/workflows/ci.yml) | PR 到 `main`、push 到 `main`/`feat/**` | pytest、前端 lint/build、Docker 构建校验 |
+| [Docker Publish](.github/workflows/docker-publish.yml) | push 到 `main`、打 `v*` 标签 | 构建并推送镜像到 GHCR |
 
 ## 环境变量
 

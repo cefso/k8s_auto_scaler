@@ -103,7 +103,7 @@ export function AppLayout() {
     try {
       const res = await searchApi.globalSearch(Number(clusterId), searchKeyword)
       setSearchResults(res.data.items || [])
-    } catch (e) {
+    } catch {
       setSearchResults([])
     } finally {
       setSearchLoading(false)
