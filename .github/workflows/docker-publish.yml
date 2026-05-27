@@ -1,5 +1,6 @@
 name: Docker Publish
 
+# CD：仅 push main 或 v* 标签时推 GHCR（PR / develop 不触发）
 on:
   push:
     branches: [main]

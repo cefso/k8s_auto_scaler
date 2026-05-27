@@ -1,18 +1,21 @@
 name: CI
 
+# CI：PR→main、push→main/develop；不响应 v* 标签
 on:
   pull_request:
     branches: [main]
     paths:
       - 'backend/**'
       - 'frontend/**'
+      - 'charts/**'
       - 'docker-compose.yml'
       - '.github/workflows/**'
   push:
-    branches: [main, 'feat/**']
+    branches: [main, develop]
     paths:
       - 'backend/**'
       - 'frontend/**'
+      - 'charts/**'
       - 'docker-compose.yml'
       - '.github/workflows/**'
 

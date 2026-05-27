@@ -164,10 +164,17 @@ kubectl port-forward -n k8s-scaler svc/k8s-scaler-k8s-auto-scaler-frontend 5173:
 
 ## CI/CD
 
-| 工作流 | 触发条件 | 作用 |
-|--------|----------|------|
-| [CI](.github/workflows/ci.yml) | PR 到 `main`、push 到 `main`/`feat/**` | pytest、前端 lint/build、Docker 构建校验 |
-| [Docker Publish](.github/workflows/docker-publish.yml) | push 到 `main`、打 `v*` 标签 | 构建并推送镜像到 GHCR |
+| 事件 | CI | CD（推 GHCR） |
+|------|:--:|:-------------:|
+| PR → `main` | ✅ | ❌ |
+| push → `develop` | ✅ | ❌ |
+| push → `main` | ✅ | ✅ |
+| push tag `v*` | ❌ | ✅ |
+
+| 工作流 | 文件 | 作用 |
+|--------|------|------|
+| CI | [.github/workflows/ci.yml](.github/workflows/ci.yml) | pytest、前端 lint/build、Docker 构建校验（仅构建不推送） |
+| Docker Publish | [.github/workflows/docker-publish.yml](.github/workflows/docker-publish.yml) | 构建并推送 `backend` / `frontend` 镜像到 GHCR |
 
 ## 环境变量
 
