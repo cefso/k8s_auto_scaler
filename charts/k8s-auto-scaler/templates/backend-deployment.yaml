@@ -1,0 +1,106 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "k8s-auto-scaler.backend.fullname" . }}
+  labels:
+    {{- include "k8s-auto-scaler.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .Values.backend.replicaCount }}
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "k8s-auto-scaler.backend.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "k8s-auto-scaler.backend.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "k8s-auto-scaler.serviceAccountName" . }}
+      containers:
+        - name: backend
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.backend.service.port }}
+              protocol: TCP
+          env:
+            - name: DEBUG
+              value: {{ .Values.backend.env.DEBUG | quote }}
+            - name: DATABASE_URL
+              value: {{ .Values.backend.env.DATABASE_URL | quote }}
+            - name: JWT_EXPIRE_MINUTES
+              value: {{ .Values.backend.env.JWT_EXPIRE_MINUTES | quote }}
+            - name: INIT_ADMIN_USERNAME
+              value: {{ .Values.backend.env.INIT_ADMIN_USERNAME | quote }}
+            - name: CORS_ORIGINS
+              value: {{ include "k8s-auto-scaler.corsOrigins" . | quote }}
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "k8s-auto-scaler.secretName" . }}
+                  key: JWT_SECRET_KEY
+            - name: KUBECONFIG_ENCRYPTION_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "k8s-auto-scaler.secretName" . }}
+                  key: KUBECONFIG_ENCRYPTION_KEY
+            - name: INIT_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "k8s-auto-scaler.secretName" . }}
+                  key: INIT_ADMIN_PASSWORD
+          {{- if .Values.backend.persistence.enabled }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.backend.persistence.mountPath }}
+          {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+          {{- with .Values.backend.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- if .Values.backend.persistence.enabled }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "k8s-auto-scaler.backend.fullname" . }}
+      {{- end }}
+      {{- with .Values.backend.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.backend.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

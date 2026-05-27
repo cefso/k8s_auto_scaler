@@ -1,0 +1,76 @@
+# 默认 values — 生产部署前请覆盖 secrets 与 ingress.hosts
+
+nameOverride: ""
+fullnameOverride: ""
+
+imagePullSecrets: []
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+backend:
+  image:
+    repository: ghcr.io/cefso/k8s-scaler-backend
+    tag: latest
+    pullPolicy: IfNotPresent
+  # APScheduler 使用进程内调度，必须单副本
+  replicaCount: 1
+  service:
+    type: ClusterIP
+    port: 8082
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  persistence:
+    enabled: true
+    storageClass: ""
+    accessMode: ReadWriteOnce
+    size: 1Gi
+    mountPath: /app/data
+  env:
+    DEBUG: "false"
+    DATABASE_URL: sqlite+aiosqlite:///./data/k8s_dashboard.db
+    JWT_EXPIRE_MINUTES: "480"
+    INIT_ADMIN_USERNAME: admin
+    # 逗号分隔；Ingress 启用时请在安装时设置为对外访问地址
+    CORS_ORIGINS: ""
+
+frontend:
+  image:
+    repository: ghcr.io/cefso/k8s-scaler-frontend
+    tag: latest
+    pullPolicy: IfNotPresent
+  replicaCount: 1
+  service:
+    type: ClusterIP
+    port: 5173
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+# 敏感配置：生产环境建议使用 --set 或 external Secret，勿将明文提交到 Git
+secrets:
+  create: true
+  existingSecret: ""
+  jwtSecretKey: ""
+  kubeconfigEncryptionKey: ""
+  initAdminPassword: ""
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: k8s-scaler.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+podAnnotations: {}
+podLabels: {}
+commonLabels: {}
