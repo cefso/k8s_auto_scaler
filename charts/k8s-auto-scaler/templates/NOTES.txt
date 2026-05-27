@@ -1,0 +1,41 @@
+K8s Auto Scaler Dashboard 已部署到命名空间 {{ .Release.Namespace }}。
+
+{{- if .Values.ingress.enabled }}
+
+通过 Ingress 访问：
+{{- range .Values.ingress.hosts }}
+  {{- $scheme := "http" }}
+  {{- if $.Values.ingress.tls }}
+  {{- $scheme = "https" }}
+  {{- end }}
+  {{ $scheme }}://{{ .host }}
+{{- end }}
+
+{{- else if eq .Values.frontend.service.type "NodePort" }}
+
+NodePort 访问（将 <node-ip> 替换为节点 IP）：
+  export NODE_PORT=$(kubectl get -n {{ .Release.Namespace }} svc {{ include "k8s-auto-scaler.frontend.fullname" . }} -o jsonpath='{.spec.ports[0].nodePort}')
+  echo http://<node-ip>:$NODE_PORT
+
+{{- else if eq .Values.frontend.service.type "LoadBalancer" }}
+
+等待 LoadBalancer 分配外部 IP 后访问：
+  kubectl get -n {{ .Release.Namespace }} svc {{ include "k8s-auto-scaler.frontend.fullname" . }} -w
+
+{{- else }}
+
+集群内访问前端 Service：
+  {{ include "k8s-auto-scaler.frontend.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local:{{ .Values.frontend.service.port }}
+
+本地端口转发示例：
+  kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "k8s-auto-scaler.frontend.fullname" . }} 5173:{{ .Values.frontend.service.port }}
+  浏览器打开 http://localhost:5173
+
+{{- end }}
+
+登录账号：{{ .Values.backend.env.INIT_ADMIN_USERNAME }}（密码来自安装时设置的 secrets.initAdminPassword）
+
+重要：
+  - backend 固定为单副本（APScheduler 定时任务），请勿调高 backend.replicaCount
+  - SQLite 数据保存在 PVC「{{ include "k8s-auto-scaler.backend.fullname" . }}」（若 persistence.enabled=true）
+  - 生产环境请确保已设置 JWT 与 KUBECONFIG 加密密钥

@@ -1,0 +1,25 @@
+# 示例 values（复制后填写 secrets，勿提交明文到 Git）
+# helm upgrade --install k8s-scaler ./charts/k8s-auto-scaler -f values-example.yaml
+
+secrets:
+  create: true
+  jwtSecretKey: ""              # openssl rand -hex 32
+  kubeconfigEncryptionKey: ""   # Fernet.generate_key()
+  initAdminPassword: ""
+
+ingress:
+  enabled: true
+  className: nginx
+  hosts:
+    - host: scaler.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: scaler-tls
+      hosts:
+        - scaler.example.com
+
+backend:
+  env:
+    CORS_ORIGINS: https://scaler.example.com

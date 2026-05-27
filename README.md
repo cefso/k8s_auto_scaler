@@ -137,6 +137,31 @@ services:
 
 私有包需先登录：`echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin`
 
+### 6. Helm 部署（Kubernetes）
+
+Chart 位于 [`charts/k8s-auto-scaler`](charts/k8s-auto-scaler/)，包含 backend（单副本 + PVC）、frontend（nginx 反代 API）及可选 Ingress。
+
+```bash
+JWT_SECRET=$(openssl rand -hex 32)
+KUBE_KEY=$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+
+helm upgrade --install k8s-scaler ./charts/k8s-auto-scaler \
+  --namespace k8s-scaler --create-namespace \
+  --set secrets.jwtSecretKey="$JWT_SECRET" \
+  --set secrets.kubeconfigEncryptionKey="$KUBE_KEY" \
+  --set secrets.initAdminPassword='your-secure-password'
+```
+
+本地访问（ClusterIP 时）：
+
+```bash
+kubectl port-forward -n k8s-scaler svc/k8s-scaler-k8s-auto-scaler-frontend 5173:5173
+```
+
+详细参数、Ingress 与已有 Secret 用法见 [charts/k8s-auto-scaler/README.md](charts/k8s-auto-scaler/README.md)。
+
+> **注意**：与 Docker Compose 相同，Helm 部署的 backend 亦须保持 **单副本**，SQLite 通过 PVC 持久化。
+
 ## CI/CD
 
 | 工作流 | 触发条件 | 作用 |
@@ -177,6 +202,7 @@ python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().d
 
 ```
 k8s_auto_scaler/
+├── charts/k8s-auto-scaler/      # Helm Chart（K8s 部署）
 ├── docker-compose.yml           # Docker 一键部署
 ├── .env.example                 # 环境变量模板
 ├── backend/

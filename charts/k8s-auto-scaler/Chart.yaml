@@ -1,0 +1,15 @@
+apiVersion: v2
+name: k8s-auto-scaler
+description: K8s 多集群资源管理仪表盘，支持定时扩缩容
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - kubernetes
+  - dashboard
+  - autoscaling
+home: https://github.com/cefso/k8s_auto_scaler
+sources:
+  - https://github.com/cefso/k8s_auto_scaler
+maintainers:
+  - name: cefso
