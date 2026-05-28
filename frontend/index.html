@@ -6,13 +6,21 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>K8s Auto Scaler</title>
     <script>
-      // Prevent theme flash
-      const theme = localStorage.getItem('k8s-dashboard-theme');
-      if (theme === 'light') {
-        document.documentElement.classList.remove('dark');
-      } else {
-        document.documentElement.classList.add('dark');
-      }
+      // Prevent theme flash (must match zustand persist key/format in themeStore.ts)
+      (function () {
+        try {
+          var raw = localStorage.getItem('k8s-dashboard-theme');
+          var parsed = raw ? JSON.parse(raw) : null;
+          var theme = (parsed && parsed.state && parsed.state.theme) || 'dark';
+          if (theme === 'light') {
+            document.documentElement.classList.remove('dark');
+          } else {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (e) {
+          document.documentElement.classList.add('dark');
+        }
+      })();
     </script>
   </head>
   <body>
