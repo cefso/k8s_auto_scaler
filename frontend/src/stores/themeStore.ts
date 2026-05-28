@@ -25,6 +25,11 @@ export const useThemeStore = create<ThemeState>()(
     }),
     {
       name: 'k8s-dashboard-theme',
+      onRehydrateStorage: () => (state) => {
+        if (state?.theme) {
+          applyTheme(state.theme)
+        }
+      },
     }
   )
 )
