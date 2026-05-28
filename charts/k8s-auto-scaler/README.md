@@ -79,10 +79,21 @@ helm uninstall k8s-scaler -n k8s-scaler
 kubectl delete pvc -n k8s-scaler -l app.kubernetes.io/instance=k8s-scaler
 ```
 
+## 故障排查
+
+### Pod 日志 WebSocket 返回 404（仅 Helm / Ingress 环境）
+
+常见原因有两类：
+
+1. **前端 nginx 未正确转发 WebSocket 握手**（Helm 用 ConfigMap 覆盖镜像内配置）。旧配置会把 `Connection: upgrade` 写死，在 Ingress 剥掉 `Upgrade` 头后，后端会把请求当成普通 GET，对仅注册的 WebSocket 路由返回 404。请 `helm upgrade` 到包含 `00-upgrade-map.conf` 的 Chart 版本，前端 Pod 会随 `checksum/nginx-config` 自动滚动。
+2. **后端镜像过旧**：若 `ghcr.io/cefso/k8s-scaler-backend:latest` 早于 PR #7（`logs` 路由不再挂全局 Bearer 依赖），需重新构建并推送镜像，或本地指定 `backend.image` 为自建 tag。
+
+启用 Ingress 且 `className: nginx` 时，Chart 会为 Ingress 合并 `proxy-read-timeout` / `proxy-send-timeout`（见 `values-example.yaml`）。
+
 ## 注意事项
 
 - **backend 必须单副本**：定时扩缩容使用进程内 APScheduler，多副本会导致任务重复执行。
-- **前端 nginx** 通过 ConfigMap 将 `/api` 代理到集群内 backend Service，无需单独暴露 backend。
+- **前端 nginx** 通过 ConfigMap 将 `/api`（含 WebSocket）代理到集群内 backend Service，无需单独暴露 backend。
 - **自动生成密钥**：请备份 Secret 中的 `KUBECONFIG_ENCRYPTION_KEY`；删除 Secret 或在不保留密钥的情况下重装会导致已入库 kubeconfig 无法解密。
 - `helm template` 离线渲染时每次会生成新随机值；以实际 `helm install/upgrade`（能访问集群 API）为准。
 - 私有 GHCR 镜像请配置 `imagePullSecrets`。
