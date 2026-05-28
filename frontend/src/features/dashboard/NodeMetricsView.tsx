@@ -25,6 +25,11 @@ interface NodeMetricsViewProps {
   clusterId: number
 }
 
+/** 名称含 virtual 的节点不参与集群 CPU/内存总量汇总 */
+function isPhysicalNode(node: { name: string; is_virtual?: boolean }) {
+  return node.is_virtual !== true && !node.name.toLowerCase().includes('virtual')
+}
+
 export function NodeMetricsView({ clusterId }: NodeMetricsViewProps) {
   const [selectedNode, setSelectedNode] = useState<string>('__all__')
 
@@ -52,22 +57,24 @@ export function NodeMetricsView({ clusterId }: NodeMetricsViewProps) {
   }
 
   const nodes = data?.items || []
+  const physicalNodes = nodes.filter(isPhysicalNode)
 
-  // 计算汇总值
-  const totalCpu = nodes.reduce((sum: number, n: any) => sum + (n.cpu_request || 0), 0).toFixed(2)
-  const usedCpu = nodes.reduce((sum: number, n: any) => sum + (n.cpu_usage || 0), 0).toFixed(2)
-  const totalMemory = nodes.reduce((sum: number, n: any) => sum + (n.memory_request || 0), 0)
-  const usedMemory = nodes.reduce((sum: number, n: any) => sum + (n.memory_usage || 0), 0)
+  // 集群汇总：真实使用 / 节点总 capacity（排除 virtual 节点）
+  const totalCpuNum = physicalNodes.reduce((sum: number, n: any) => sum + (n.cpu_capacity || 0), 0)
+  const usedCpuNum = physicalNodes.reduce((sum: number, n: any) => sum + (n.cpu_usage || 0), 0)
+  const totalMemory = physicalNodes.reduce((sum: number, n: any) => sum + (n.memory_capacity || 0), 0)
+  const usedMemory = physicalNodes.reduce((sum: number, n: any) => sum + (n.memory_usage || 0), 0)
+  const totalCpu = totalCpuNum.toFixed(2)
+  const usedCpu = usedCpuNum.toFixed(2)
 
-  // 计算使用百分比
-  const cpuPercent = totalCpu && Number(totalCpu) > 0
-    ? Math.round((Number(usedCpu) / Number(totalCpu)) * 100)
+  const cpuPercent = totalCpuNum > 0
+    ? Math.round((usedCpuNum / totalCpuNum) * 100)
     : 0
   const memoryPercent = totalMemory > 0
     ? Math.round((usedMemory / totalMemory) * 100)
     : 0
 
-  // 当前选中节点的数据
+  // 当前选中节点的数据（选具体节点时仍展示该节点自身 usage/capacity）
   const selectedNodeData = selectedNode === '__all__'
     ? null
     : nodes.find((n: any) => n.name === selectedNode)
@@ -75,8 +82,8 @@ export function NodeMetricsView({ clusterId }: NodeMetricsViewProps) {
   const nodeMemoryPercent = selectedNodeData?.memory_percent ?? memoryPercent
   const nodeCpuUsage = selectedNodeData?.cpu_usage ?? usedCpu
   const nodeMemUsage = selectedNodeData?.memory_usage ?? usedMemory
-  const nodeCpuTotal = selectedNodeData?.cpu_request ?? totalCpu
-  const nodeMemTotal = selectedNodeData?.memory_request ?? totalMemory
+  const nodeCpuTotal = selectedNodeData?.cpu_capacity ?? totalCpu
+  const nodeMemTotal = selectedNodeData?.memory_capacity ?? totalMemory
 
   // 环形图数据
   const cpuChartData = [
@@ -114,10 +121,10 @@ export function NodeMetricsView({ clusterId }: NodeMetricsViewProps) {
         {/* 节点数 Card */}
         <Card className="flex flex-col">
           <CardContent className="p-2 text-center">
-            <div className="text-sm text-muted-foreground">节点数</div>
+            <div className="text-sm text-muted-foreground">节点数（不含 virtual）</div>
           </CardContent>
           <CardContent className="flex-1 p-2 flex items-center justify-center">
-            <span className="text-4xl font-bold font-mono">{nodes.length || '-'}</span>
+            <span className="text-4xl font-bold font-mono">{physicalNodes.length || '-'}</span>
           </CardContent>
         </Card>
 
