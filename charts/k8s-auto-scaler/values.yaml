@@ -14,7 +14,7 @@ backend:
   image:
     repository: ghcr.io/cefso/k8s-scaler-backend
     tag: latest
-    pullPolicy: IfNotPresent
+    pullPolicy: Always
   # APScheduler 使用进程内调度，必须单副本
   replicaCount: 1
   service:
@@ -57,6 +57,8 @@ frontend:
 secrets:
   create: true
   autoGenerate: true
+  # 设为 true 并 helm upgrade 可强制重写 Secret 中的自动生成密钥（跳过 lookup 保留旧值）
+  forceRegenerate: false
   existingSecret: ""
   jwtSecretKey: ""
   kubeconfigEncryptionKey: ""

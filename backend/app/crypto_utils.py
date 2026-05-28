@@ -20,28 +20,44 @@ _fernet_key_cache: bytes | None = None
 
 
 def _parse_fernet_key(raw: str) -> bytes:
-    """解析 Fernet 密钥，兼容 Fernet.generate_key() 与 Helm 旧版标准 Base64。"""
-    raw = raw.strip()
+    """解析 Fernet 密钥，兼容 Fernet.generate_key()、标准/URL-safe Base64 及缺填充情况。"""
+    raw = raw.strip().strip('"').strip("'")
     if not raw:
         raise ValueError("KUBECONFIG_ENCRYPTION_KEY 为空")
 
-    try:
-        Fernet(raw.encode())
-        return raw.encode()
-    except Exception:
-        pass
+    candidates: list[str] = [raw]
+    padding = "=" * (-len(raw) % 4)
+    if padding:
+        candidates.append(raw + padding)
 
-    try:
-        decoded = base64.b64decode(raw, validate=True)
-        if len(decoded) != 32:
-            raise ValueError("decoded length is not 32")
-        normalized = base64.urlsafe_b64encode(decoded)
-        Fernet(normalized)
-        return normalized
-    except Exception as e:
-        raise ValueError(
-            "KUBECONFIG_ENCRYPTION_KEY 格式无效，请使用 Fernet.generate_key() 生成"
-        ) from e
+    for candidate in candidates:
+        try:
+            Fernet(candidate.encode("ascii"))
+            return candidate.encode("ascii")
+        except Exception:
+            pass
+
+    for decoder in (base64.urlsafe_b64decode, base64.b64decode):
+        for candidate in candidates:
+            try:
+                decoded = decoder(candidate.encode("ascii"))
+                if len(decoded) != 32:
+                    continue
+                normalized = base64.urlsafe_b64encode(decoded)
+                Fernet(normalized)
+                return normalized
+            except Exception:
+                continue
+
+    hint = ""
+    if len(raw) == 64 and raw.replace("-", "").replace("_", "").isalnum():
+        hint = "（疑似误用了 JWT_SECRET_KEY，两者不可混用）"
+    elif len(raw) == 43:
+        hint = "（疑似缺少 Base64 末尾填充 =）"
+    raise ValueError(
+        f"KUBECONFIG_ENCRYPTION_KEY 格式无效（长度 {len(raw)}）{hint}，"
+        "请使用 python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\" 生成"
+    )
 
 
 def validate_crypto_config() -> None:

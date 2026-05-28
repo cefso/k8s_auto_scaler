@@ -69,17 +69,20 @@ app.kubernetes.io/component: frontend
 {{- end }}
 
 {{/*
-Fernet 密钥：32 字节 URL-safe Base64（与 Fernet.generate_key() 一致）；upgrade 时从已有 Secret 读取
+Fernet 密钥：32 字节标准 Base64（cryptography.Fernet 可接受）；upgrade 时默认保留已有 Secret
 */}}
 {{- define "k8s-auto-scaler.secret.kubeconfigEncryptionKey" -}}
 {{- if .Values.secrets.kubeconfigEncryptionKey -}}
 {{- .Values.secrets.kubeconfigEncryptionKey -}}
 {{- else -}}
-{{- $existing := lookup "v1" "Secret" .Release.Namespace (include "k8s-auto-scaler.secretName" .) -}}
+{{- $existing := "" -}}
+{{- if not .Values.secrets.forceRegenerate -}}
+{{- $existing = lookup "v1" "Secret" .Release.Namespace (include "k8s-auto-scaler.secretName" .) -}}
+{{- end -}}
 {{- if and $existing $existing.data (index $existing.data "KUBECONFIG_ENCRYPTION_KEY") -}}
 {{- index $existing.data "KUBECONFIG_ENCRYPTION_KEY" | b64dec -}}
 {{- else if .Values.secrets.autoGenerate -}}
-{{- randBytes 32 | b64enc | replace "+" "-" | replace "/" "_" -}}
+{{- randBytes 32 | b64enc -}}
 {{- else -}}
 {{- fail "secrets.kubeconfigEncryptionKey 未设置且 secrets.autoGenerate=false，请提供密钥或开启自动生成" -}}
 {{- end -}}
@@ -90,7 +93,10 @@ Fernet 密钥：32 字节 URL-safe Base64（与 Fernet.generate_key() 一致）�
 {{- if .Values.secrets.jwtSecretKey -}}
 {{- .Values.secrets.jwtSecretKey -}}
 {{- else -}}
-{{- $existing := lookup "v1" "Secret" .Release.Namespace (include "k8s-auto-scaler.secretName" .) -}}
+{{- $existing := "" -}}
+{{- if not .Values.secrets.forceRegenerate -}}
+{{- $existing = lookup "v1" "Secret" .Release.Namespace (include "k8s-auto-scaler.secretName" .) -}}
+{{- end -}}
 {{- if and $existing $existing.data (index $existing.data "JWT_SECRET_KEY") -}}
 {{- index $existing.data "JWT_SECRET_KEY" | b64dec -}}
 {{- else if .Values.secrets.autoGenerate -}}
@@ -105,7 +111,10 @@ Fernet 密钥：32 字节 URL-safe Base64（与 Fernet.generate_key() 一致）�
 {{- if .Values.secrets.initAdminPassword -}}
 {{- .Values.secrets.initAdminPassword -}}
 {{- else -}}
-{{- $existing := lookup "v1" "Secret" .Release.Namespace (include "k8s-auto-scaler.secretName" .) -}}
+{{- $existing := "" -}}
+{{- if not .Values.secrets.forceRegenerate -}}
+{{- $existing = lookup "v1" "Secret" .Release.Namespace (include "k8s-auto-scaler.secretName" .) -}}
+{{- end -}}
 {{- if and $existing $existing.data (index $existing.data "INIT_ADMIN_PASSWORD") -}}
 {{- index $existing.data "INIT_ADMIN_PASSWORD" | b64dec -}}
 {{- else if .Values.secrets.autoGenerate -}}

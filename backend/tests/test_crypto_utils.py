@@ -1,6 +1,7 @@
 import base64
 import os
 
+import pytest
 from cryptography.fernet import Fernet
 
 from app.crypto_utils import _parse_fernet_key
@@ -23,3 +24,15 @@ def test_parse_fernet_key_accepts_helm_urlsafe_style():
     helm_style = base64.b64encode(raw).decode().replace("+", "-").replace("/", "_")
     f = Fernet(_parse_fernet_key(helm_style))
     assert f.decrypt(f.encrypt(b"hello")) == b"hello"
+
+
+def test_parse_fernet_key_accepts_key_missing_padding():
+    raw = os.urandom(32)
+    no_pad = base64.urlsafe_b64encode(raw).decode().rstrip("=")
+    f = Fernet(_parse_fernet_key(no_pad))
+    assert f.decrypt(f.encrypt(b"hello")) == b"hello"
+
+
+def test_parse_fernet_key_rejects_jwt_like_key():
+    with pytest.raises(ValueError, match="JWT_SECRET_KEY"):
+        _parse_fernet_key("a" * 64)
