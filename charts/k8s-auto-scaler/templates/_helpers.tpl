@@ -80,7 +80,15 @@ Fernet 密钥：32 字节标准 Base64（cryptography.Fernet 可接受）；upgr
 {{- $existing = lookup "v1" "Secret" .Release.Namespace (include "k8s-auto-scaler.secretName" .) -}}
 {{- end -}}
 {{- if and $existing $existing.data (index $existing.data "KUBECONFIG_ENCRYPTION_KEY") -}}
-{{- index $existing.data "KUBECONFIG_ENCRYPTION_KEY" | b64dec -}}
+{{- $kubeKey := index $existing.data "KUBECONFIG_ENCRYPTION_KEY" | b64dec -}}
+{{- /* 修复历史双层 Base64：解码一次后若仍像 Base64（约 60 字符），再解码一次 */ -}}
+{{- if gt (len $kubeKey) 50 -}}
+{{- $kubeKeyInner := $kubeKey | b64dec -}}
+{{- if and $kubeKeyInner (ge (len $kubeKeyInner) 40) (le (len $kubeKeyInner) 48) -}}
+{{- $kubeKey = $kubeKeyInner -}}
+{{- end -}}
+{{- end -}}
+{{- $kubeKey -}}
 {{- else if .Values.secrets.autoGenerate -}}
 {{- randBytes 32 | b64enc -}}
 {{- else -}}

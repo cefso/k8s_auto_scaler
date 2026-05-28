@@ -19,9 +19,28 @@ logger = logging.getLogger(__name__)
 _fernet_key_cache: bytes | None = None
 
 
+def _unwrap_env_fernet_key(raw: str) -> str:
+    """环境变量中的密钥；兼容 Helm Secret 误双层 Base64 写入的情况。"""
+    s = raw.strip().strip('"').strip("'")
+    for _ in range(2):
+        try:
+            Fernet(s.encode("ascii"))
+            return s
+        except Exception:
+            pass
+        try:
+            inner = base64.b64decode(s.encode("ascii"), validate=True).decode("ascii")
+        except Exception:
+            break
+        if inner == s or not inner:
+            break
+        s = inner
+    return s
+
+
 def _parse_fernet_key(raw: str) -> bytes:
     """解析 Fernet 密钥，兼容 Fernet.generate_key()、标准/URL-safe Base64 及缺填充情况。"""
-    raw = raw.strip().strip('"').strip("'")
+    raw = _unwrap_env_fernet_key(raw)
     if not raw:
         raise ValueError("KUBECONFIG_ENCRYPTION_KEY 为空")
 
