@@ -777,6 +777,104 @@ def list_pods(api_client, namespace: str | None = None) -> list[dict]:
     return result
 
 
+_METRICS_GROUP = "metrics.k8s.io"
+_METRICS_VERSION = "v1beta1"
+
+
+def _list_pod_metric_items(api_client, namespace: str | None = None) -> list[dict]:
+    """通过 metrics.k8s.io API 列出 Pod 指标（无需 kubectl）。"""
+    custom_api = client.CustomObjectsApi(api_client)
+    try:
+        if namespace:
+            result = custom_api.list_namespaced_custom_object(
+                group=_METRICS_GROUP,
+                version=_METRICS_VERSION,
+                namespace=namespace,
+                plural="pods",
+            )
+        else:
+            result = custom_api.list_cluster_custom_object(
+                group=_METRICS_GROUP,
+                version=_METRICS_VERSION,
+                plural="pods",
+            )
+    except ApiException as e:
+        if e.status in (403, 404):
+            logger.warning("无法获取 Pod metrics (metrics-server/API): %s", e.reason)
+            return []
+        raise
+    return result.get("items", [])
+
+
+def _pod_metrics_by_name_in_namespace(api_client, namespace: str) -> dict[str, dict]:
+    """命名空间内 pod 名 -> {cpu_usage, memory_usage}。"""
+    metrics: dict[str, dict] = {}
+    for item in _list_pod_metric_items(api_client, namespace=namespace):
+        name = item.get("metadata", {}).get("name")
+        usage = item.get("usage") or {}
+        if not name:
+            continue
+        metrics[name] = {
+            "cpu_usage": round(_parse_cpu_value(str(usage.get("cpu", "0"))), 4),
+            "memory_usage": _parse_resource_value(str(usage.get("memory", "0"))),
+        }
+    return metrics
+
+
+def _pod_metrics_by_namespace_and_name(
+    api_client, namespace: str | None = None
+) -> dict[tuple[str, str], dict]:
+    """(namespace, pod) -> {cpu, memory}。"""
+    metrics: dict[tuple[str, str], dict] = {}
+    for item in _list_pod_metric_items(api_client, namespace=namespace):
+        meta = item.get("metadata", {})
+        name = meta.get("name")
+        ns = meta.get("namespace")
+        usage = item.get("usage") or {}
+        if not name or not ns:
+            continue
+        metrics[(ns, name)] = {
+            "cpu": _parse_cpu_value(str(usage.get("cpu", "0"))),
+            "memory": _parse_resource_value(str(usage.get("memory", "0"))),
+        }
+    return metrics
+
+
+def _node_metrics_usage(api_client, allocatable_by_name: dict[str, dict]) -> dict[str, dict]:
+    """节点名 -> {cpu, cpu_percent, memory, memory_percent}。"""
+    custom_api = client.CustomObjectsApi(api_client)
+    try:
+        result = custom_api.list_cluster_custom_object(
+            group=_METRICS_GROUP,
+            version=_METRICS_VERSION,
+            plural="nodes",
+        )
+    except ApiException as e:
+        if e.status in (403, 404):
+            logger.warning("无法获取节点 metrics (metrics-server/API): %s", e.reason)
+            return {}
+        raise
+
+    node_metrics: dict[str, dict] = {}
+    for item in result.get("items", []):
+        name = item.get("metadata", {}).get("name")
+        usage = item.get("usage") or {}
+        if not name:
+            continue
+        cpu = _parse_cpu_value(str(usage.get("cpu", "0")))
+        mem = _parse_resource_value(str(usage.get("memory", "0")))
+        alloc = allocatable_by_name.get(name, {})
+        cpu_alloc = alloc.get("cpu", 0) or 0
+        mem_alloc = alloc.get("memory", 0) or 0
+        node_metrics[name] = {
+            "cpu": cpu,
+            "cpu_percent": round(cpu / cpu_alloc * 100, 1) if cpu_alloc > 0 else 0.0,
+            "memory": mem,
+            "memory_percent": round(mem / mem_alloc * 100, 1) if mem_alloc > 0 else 0.0,
+        }
+    return node_metrics
+
+
 def get_workload_pods(api_client, namespace: str, workload_kind: str, workload_name: str, kubeconfig_content: str = None) -> dict:
     """获取特定工作负载的 Pod 列表及资源使用量
 
@@ -937,47 +1035,11 @@ def get_workload_pods(api_client, namespace: str, workload_kind: str, workload_n
     items = []
     pod_metrics_map = {}
 
-    # 通过 kubectl top pods 获取实际使用量
-    if kubeconfig_content:
-        kubeconfig_path = None
-        try:
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.kubeconfig', delete=False) as f:
-                f.write(kubeconfig_content)
-                kubeconfig_path = f.name
-
-            env = os.environ.copy()
-            env["KUBECONFIG"] = kubeconfig_path
-
-            result = subprocess.run(
-                ["kubectl", "top", "pods", "-n", namespace, "--no-headers"],
-                capture_output=True, text=True, env=env, timeout=60
-            )
-            if result.returncode == 0 and result.stdout:
-                for line in result.stdout.strip().split('\n'):
-                    if line:
-                        parts = line.split()
-                        # 无表头格式: NAME CPU MEMORY
-                        # 有表头格式: NAMESPACE NAME CPU MEMORY
-                        if len(parts) >= 3:
-                            if len(parts) == 3:
-                                # 无表头: NAME CPU MEMORY
-                                name = parts[0]
-                                cpu_str = parts[1]
-                                mem_str = parts[2]
-                            else:
-                                # 有表头: NAMESPACE NAME CPU MEMORY
-                                name = parts[1]
-                                cpu_str = parts[2]
-                                mem_str = parts[3]
-                            pod_metrics_map[name] = {
-                                "cpu_usage": round(_parse_cpu_value(cpu_str), 4),
-                                "memory_usage": _parse_resource_value(mem_str),
-                            }
-        except Exception as e:
-            logger.warning(f"无法获取 Pod metrics: {e}")
-        finally:
-            if kubeconfig_path:
-                os.unlink(kubeconfig_path)
+    try:
+        pod_metrics_map = _pod_metrics_by_name_in_namespace(api_client, namespace)
+    except Exception as e:
+        logger.warning("无法获取 Pod metrics: %s", e)
+        pod_metrics_map = {}
 
     for pod in filtered_pods:
         cpu_request, cpu_limit, memory_request, memory_limit = 0.0, 0.0, 0, 0
@@ -1283,7 +1345,7 @@ def get_node_metrics(api_client, kubeconfig_content: str = None) -> dict:
     v1 = client.CoreV1Api(api_client)
     items = []
     metrics_available = False
-    kubeconfig_path = None
+    allocatable_by_name: dict[str, dict] = {}
 
     try:
         nodes = v1.list_node()
@@ -1318,56 +1380,27 @@ def get_node_metrics(api_client, kubeconfig_content: str = None) -> dict:
                     val = _parse_resource_value(mem_alloc)
                     item["memory_request"] = val
                     item["memory_limit"] = val  # allocatable 作为节点容量
+            allocatable_by_name[item["name"]] = {
+                "cpu": item["cpu_limit"],
+                "memory": item["memory_limit"],
+            }
             items.append(item)
     except Exception as e:
         logger.warning(f"获取节点列表失败: {e}")
 
-    if kubeconfig_content:
-        try:
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.kubeconfig', delete=False) as f:
-                f.write(kubeconfig_content)
-                kubeconfig_path = f.name
-
-            env = os.environ.copy()
-            env["KUBECONFIG"] = kubeconfig_path
-
-            result = subprocess.run(
-                ["kubectl", "top", "nodes", "--no-headers"],
-                capture_output=True, text=True, env=env, timeout=30
-            )
-            if result.returncode == 0:
-                metrics_available = True
-                node_metrics = {}
-                for line in result.stdout.strip().split('\n'):
-                    if line:
-                        parts = line.split()
-                        # 输出格式: NAME   CPU(cores)   CPU%   MEMORY(bytes)   MEMORY%
-                        if len(parts) >= 5:
-                            name = parts[0]
-                            cpu_str = parts[1]
-                            cpu_percent_str = parts[2]
-                            mem_str = parts[3]
-                            mem_percent_str = parts[4]
-                            node_metrics[name] = {
-                                "cpu": _parse_cpu_value(cpu_str),
-                                "cpu_percent": float(cpu_percent_str.rstrip('%')),
-                                "memory": _parse_resource_value(mem_str),
-                                "memory_percent": float(mem_percent_str.rstrip('%')),
-                            }
-
-                # 合并节点信息和 metrics
-                for item in items:
-                    name = item["name"]
-                    if name in node_metrics:
-                        item["cpu_usage"] = node_metrics[name].get("cpu", 0)
-                        item["cpu_percent"] = node_metrics[name].get("cpu_percent", 0)
-                        item["memory_usage"] = node_metrics[name].get("memory", 0)
-                        item["memory_percent"] = node_metrics[name].get("memory_percent", 0)
-        except Exception as e:
-            logger.warning(f"无法获取节点 metrics: {e}")
-        finally:
-            if kubeconfig_path:
-                os.unlink(kubeconfig_path)
+    try:
+        node_metrics = _node_metrics_usage(api_client, allocatable_by_name)
+        if node_metrics:
+            metrics_available = True
+            for item in items:
+                name = item["name"]
+                if name in node_metrics:
+                    item["cpu_usage"] = node_metrics[name].get("cpu", 0)
+                    item["cpu_percent"] = node_metrics[name].get("cpu_percent", 0)
+                    item["memory_usage"] = node_metrics[name].get("memory", 0)
+                    item["memory_percent"] = node_metrics[name].get("memory_percent", 0)
+    except Exception as e:
+        logger.warning("无法获取节点 metrics: %s", e)
 
     return {
         "items": items,
@@ -1438,52 +1471,18 @@ def get_pod_metrics(api_client, kubeconfig_content: str = None) -> dict:
             "phase": pod.status.phase if pod.status else "Unknown",
         })
 
-    # 通过 kubectl top pods 获取实际使用量
-    if kubeconfig_content:
-        kubeconfig_path = None
-        try:
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.kubeconfig', delete=False) as f:
-                f.write(kubeconfig_content)
-                kubeconfig_path = f.name
-
-            env = os.environ.copy()
-            env["KUBECONFIG"] = kubeconfig_path
-
-            result = subprocess.run(
-                ["kubectl", "top", "pods", "--all-namespaces", "--no-headers"],
-                capture_output=True, text=True, env=env, timeout=60
-            )
-            if result.returncode == 0:
-                pod_usage_map = {}
-                for line in result.stdout.strip().split('\n'):
-                    if line:
-                        parts = line.split()
-                        # 输出格式: NAMESPACE   NAME   CPU(cores)   MEMORY(bytes)
-                        if len(parts) >= 4:
-                            ns = parts[0]
-                            name = parts[1]
-                            cpu_str = parts[2]
-                            mem_str = parts[3]
-                            key = (ns, name)
-                            pod_usage_map[key] = {
-                                "cpu": _parse_cpu_value(cpu_str),
-                                "memory": _parse_resource_value(mem_str),
-                            }
-
-                # 合并使用量到 items，并汇总
-                for item in items:
-                    key = (item["namespace"], item["name"])
-                    if key in pod_usage_map:
-                        usage = pod_usage_map[key]
-                        item["cpu_usage"] = round(usage["cpu"], 4)
-                        item["memory_usage"] = usage["memory"]
-                        total_cpu_usage += usage["cpu"]
-                        total_memory_usage += usage["memory"]
-        except Exception as e:
-            logger.warning(f"无法获取 Pod metrics: {e}")
-        finally:
-            if kubeconfig_path:
-                os.unlink(kubeconfig_path)
+    try:
+        pod_usage_map = _pod_metrics_by_namespace_and_name(api_client)
+        for item in items:
+            key = (item["namespace"], item["name"])
+            if key in pod_usage_map:
+                usage = pod_usage_map[key]
+                item["cpu_usage"] = round(usage["cpu"], 4)
+                item["memory_usage"] = usage["memory"]
+                total_cpu_usage += usage["cpu"]
+                total_memory_usage += usage["memory"]
+    except Exception as e:
+        logger.warning("无法获取 Pod metrics: %s", e)
 
     return {
         "total_request": {
@@ -1572,54 +1571,16 @@ def get_top_pods(
             "phase": pod.status.phase if pod.status else "Unknown",
         })
 
-    # 获取实际使用量
-    if kubeconfig_content:
-        kubeconfig_path = None
-        try:
-            with tempfile.NamedTemporaryFile(mode="w", suffix=".kubeconfig", delete=False) as f:
-                f.write(kubeconfig_content)
-                kubeconfig_path = f.name
-
-            env = os.environ.copy()
-            env["KUBECONFIG"] = kubeconfig_path
-
-            cmd = ["kubectl", "top", "pods"]
-            if namespace:
-                cmd.extend(["-n", namespace])
-            else:
-                cmd.append("--all-namespaces")
-            cmd.append("--no-headers")
-
-            result = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=60)
-            if result.returncode == 0:
-                pod_usage_map = {}
-                for line in result.stdout.strip().split("\n"):
-                    if line:
-                        parts = line.split()
-                        if len(parts) >= 4:
-                            # 无表头格式: NAMESPACE NAME CPU MEMORY
-                            # 有表头格式: NAMESPACE NAME CPU% MEMORY%
-                            ns = parts[0]
-                            name = parts[1]
-                            cpu_str = parts[2]
-                            mem_str = parts[3]
-                            pod_usage_map[(ns, name)] = {
-                                "cpu": _parse_cpu_value(cpu_str),
-                                "memory": _parse_resource_value(mem_str),
-                            }
-
-                # 合并使用量
-                for pod in pod_data:
-                    key = (pod["namespace"], pod["name"])
-                    if key in pod_usage_map:
-                        usage = pod_usage_map[key]
-                        pod["cpu_usage"] = round(usage["cpu"], 4)
-                        pod["memory_usage"] = usage["memory"]
-        except Exception as e:
-            logger.warning(f"无法获取 Pod metrics: {e}")
-        finally:
-            if kubeconfig_path:
-                os.unlink(kubeconfig_path)
+    try:
+        pod_usage_map = _pod_metrics_by_namespace_and_name(api_client, namespace=namespace)
+        for pod in pod_data:
+            key = (pod["namespace"], pod["name"])
+            if key in pod_usage_map:
+                usage = pod_usage_map[key]
+                pod["cpu_usage"] = round(usage["cpu"], 4)
+                pod["memory_usage"] = usage["memory"]
+    except Exception as e:
+        logger.warning("无法获取 Pod metrics: %s", e)
 
     # 过滤出有实际使用量的 Pod
     pods_with_usage = [p for p in pod_data if p.get("cpu_usage") is not None or p.get("memory_usage") is not None]

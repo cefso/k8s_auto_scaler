@@ -7,12 +7,12 @@ Kubernetes 资源分析与健康度评估服务
 - OOMKilled/限流风险检测
 """
 import logging
-import os
-import tempfile
 from typing import Optional
 
 from kubernetes import client
 from kubernetes.client.rest import ApiException
+
+from app.services.k8s_service import _pod_metrics_by_name_in_namespace
 
 logger = logging.getLogger(__name__)
 
@@ -62,14 +62,12 @@ def parse_memory_value(value: str) -> int:
 def analyze_workload_health(
     api_client: client.ApiClient,
     namespace: Optional[str] = None,
-    kubeconfig_content: Optional[str] = None,
 ) -> list[dict]:
     """分析 Deployment/StatefulSet 的资源健康度
 
     Args:
         api_client: K8s API client
         namespace: 命名空间过滤（可选）
-        kubeconfig_content: kubeconfig 内容（用于获取 metrics）
 
     Returns:
         工作负载健康度列表，每项包含：
@@ -96,7 +94,7 @@ def analyze_workload_health(
     # 分析每个 Deployment
     for d in deployments.items:
         analysis = _analyze_deployment_or_statefulset(
-            d, "Deployment", v1, kubeconfig_content
+            d, "Deployment", v1, api_client
         )
         if analysis:
             workloads.append(analysis)
@@ -104,7 +102,7 @@ def analyze_workload_health(
     # 分析每个 StatefulSet
     for s in statefulsets.items:
         analysis = _analyze_deployment_or_statefulset(
-            s, "StatefulSet", v1, kubeconfig_content
+            s, "StatefulSet", v1, api_client
         )
         if analysis:
             workloads.append(analysis)
@@ -116,7 +114,7 @@ def _analyze_deployment_or_statefulset(
     obj,
     kind: str,
     v1: client.CoreV1Api,
-    kubeconfig_content: Optional[str] = None,
+    api_client: client.ApiClient,
 ) -> Optional[dict]:
     """分析单个 Deployment 或 StatefulSet 的健康度"""
     namespace = obj.metadata.namespace
@@ -150,7 +148,7 @@ def _analyze_deployment_or_statefulset(
 
     # 获取实际使用量
     cpu_usage, memory_usage = _get_workload_usage(
-        v1, namespace, name, kind, kubeconfig_content
+        v1, namespace, name, kind, api_client
     )
 
     # 计算健康度
@@ -181,7 +179,7 @@ def _get_workload_usage(
     namespace: str,
     workload_name: str,
     workload_kind: str,
-    kubeconfig_content: Optional[str] = None,
+    api_client: client.ApiClient,
 ) -> tuple[float, int]:
     """获取工作负载的实际资源使用量
 
@@ -190,9 +188,6 @@ def _get_workload_usage(
     """
     cpu_usage = 0.0
     memory_usage = 0
-
-    if not kubeconfig_content:
-        return cpu_usage, memory_usage
 
     # 获取该工作负载的 Pods
     label_selector = None
@@ -225,55 +220,12 @@ def _get_workload_usage(
 
     try:
         pods = v1.list_namespaced_pod(namespace=namespace, label_selector=label_selector)
-
-        # 使用 kubectl top 获取使用量
-        kubeconfig_path = None
-        try:
-            with tempfile.NamedTemporaryFile(
-                mode="w", suffix=".kubeconfig", delete=False
-            ) as f:
-                f.write(kubeconfig_content)
-                kubeconfig_path = f.name
-
-            import subprocess
-
-            env = os.environ.copy()
-            env["KUBECONFIG"] = kubeconfig_path
-
-            # 获取所有 Pods 的 metrics
-            result = subprocess.run(
-                ["kubectl", "top", "pods", "-n", namespace, "--no-headers"],
-                capture_output=True,
-                text=True,
-                env=env,
-                timeout=60,
-            )
-
-            if result.returncode == 0:
-                pod_metrics = {}
-                for line in result.stdout.strip().split("\n"):
-                    if line:
-                        parts = line.split()
-                        if len(parts) >= 4:
-                            pod_name = parts[1]
-                            cpu_str = parts[2]
-                            mem_str = parts[3]
-                            pod_metrics[pod_name] = {
-                                "cpu": parse_cpu_value(cpu_str),
-                                "memory": parse_memory_value(mem_str),
-                            }
-
-                # 汇总该工作负载所有 Pod 的使用量
-                for pod in pods.items:
-                    if pod.metadata.name in pod_metrics:
-                        metrics = pod_metrics[pod.metadata.name]
-                        cpu_usage += metrics["cpu"]
-                        memory_usage += metrics["memory"]
-        except Exception as e:
-            logger.warning(f"获取 Pod metrics 失败: {e}")
-        finally:
-            if kubeconfig_path:
-                os.unlink(kubeconfig_path)
+        pod_metrics = _pod_metrics_by_name_in_namespace(api_client, namespace)
+        for pod in pods.items:
+            metrics = pod_metrics.get(pod.metadata.name)
+            if metrics:
+                cpu_usage += metrics.get("cpu_usage", 0)
+                memory_usage += metrics.get("memory_usage", 0)
     except Exception as e:
         logger.warning(f"获取 Pod 列表失败: {e}")
 

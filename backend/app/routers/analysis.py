@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import Cluster
-from app.services.k8s_service import get_api_client_for_cluster, get_kubeconfig_content_for_cluster
+from app.services.k8s_service import get_api_client_for_cluster
 from app.services.analysis_service import analyze_workload_health
 
 logger = logging.getLogger(__name__)
@@ -41,13 +41,11 @@ async def get_workload_health_endpoint(
     """
     cluster = await _get_cluster(db, cluster_id)
     api_client = get_api_client_for_cluster(cluster)
-    kubeconfig_content = get_kubeconfig_content_for_cluster(cluster)
 
     try:
         workloads = analyze_workload_health(
             api_client=api_client,
             namespace=namespace,
-            kubeconfig_content=kubeconfig_content,
         )
         return {
             "cluster_id": cluster_id,
