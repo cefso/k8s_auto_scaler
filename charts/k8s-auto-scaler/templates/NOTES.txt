@@ -55,6 +55,14 @@ NodePort 访问（将 <node-ip> 替换为节点 IP）：
 {{- end }}
 {{- end }}
 
+若 backend 启动报 KUBECONFIG_ENCRYPTION_KEY 格式无效：
+  1. 确认已拉取含修复的后端镜像（backend.image.pullPolicy 建议 Always）
+  2. 验证 Secret 中密钥：kubectl get secret -n {{ .Release.Namespace }} {{ include "k8s-auto-scaler.secretName" . }} -o jsonpath='{.data.KUBECONFIG_ENCRYPTION_KEY}' | base64 -d | wc -c
+     （正常约为 44 字符）
+  3. 强制重写 Secret 密钥后升级（会轮换 JWT/加密密钥，已入库 kubeconfig 需重新录入）：
+     helm upgrade {{ .Release.Name }} <chart> -n {{ .Release.Namespace }} --set secrets.forceRegenerate=true
+     成功后可将 forceRegenerate 改回 false
+
 重要：
   - backend 固定为单副本（APScheduler 定时任务），请勿调高 backend.replicaCount
   - SQLite 数据保存在 PVC「{{ include "k8s-auto-scaler.backend.fullname" . }}」（若 persistence.enabled=true）
