@@ -68,6 +68,54 @@ app.kubernetes.io/component: frontend
 {{- end }}
 {{- end }}
 
+{{/*
+Fernet 密钥：32 字节 Base64（与 Fernet.generate_key() 长度一致）；upgrade 时从已有 Secret 读取
+*/}}
+{{- define "k8s-auto-scaler.secret.kubeconfigEncryptionKey" -}}
+{{- if .Values.secrets.kubeconfigEncryptionKey -}}
+{{- .Values.secrets.kubeconfigEncryptionKey -}}
+{{- else -}}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace (include "k8s-auto-scaler.secretName" .) -}}
+{{- if and $existing $existing.data (index $existing.data "KUBECONFIG_ENCRYPTION_KEY") -}}
+{{- index $existing.data "KUBECONFIG_ENCRYPTION_KEY" | b64dec -}}
+{{- else if .Values.secrets.autoGenerate -}}
+{{- randBytes 32 | b64enc -}}
+{{- else -}}
+{{- fail "secrets.kubeconfigEncryptionKey 未设置且 secrets.autoGenerate=false，请提供密钥或开启自动生成" -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
+
+{{- define "k8s-auto-scaler.secret.jwtSecretKey" -}}
+{{- if .Values.secrets.jwtSecretKey -}}
+{{- .Values.secrets.jwtSecretKey -}}
+{{- else -}}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace (include "k8s-auto-scaler.secretName" .) -}}
+{{- if and $existing $existing.data (index $existing.data "JWT_SECRET_KEY") -}}
+{{- index $existing.data "JWT_SECRET_KEY" | b64dec -}}
+{{- else if .Values.secrets.autoGenerate -}}
+{{- randAlphaNum 64 -}}
+{{- else -}}
+{{- fail "secrets.jwtSecretKey 未设置且 secrets.autoGenerate=false" -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
+
+{{- define "k8s-auto-scaler.secret.initAdminPassword" -}}
+{{- if .Values.secrets.initAdminPassword -}}
+{{- .Values.secrets.initAdminPassword -}}
+{{- else -}}
+{{- $existing := lookup "v1" "Secret" .Release.Namespace (include "k8s-auto-scaler.secretName" .) -}}
+{{- if and $existing $existing.data (index $existing.data "INIT_ADMIN_PASSWORD") -}}
+{{- index $existing.data "INIT_ADMIN_PASSWORD" | b64dec -}}
+{{- else if .Values.secrets.autoGenerate -}}
+{{- randAlphaNum 24 -}}
+{{- else -}}
+{{- fail "secrets.initAdminPassword 未设置且 secrets.autoGenerate=false" -}}
+{{- end -}}
+{{- end -}}
+{{- end }}
+
 {{- define "k8s-auto-scaler.serviceAccountName" -}}
 {{- if .Values.serviceAccount.create }}
 {{- default (include "k8s-auto-scaler.fullname" .) .Values.serviceAccount.name }}

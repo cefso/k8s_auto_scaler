@@ -33,9 +33,29 @@ NodePort 访问（将 <node-ip> 替换为节点 IP）：
 
 {{- end }}
 
-登录账号：{{ .Values.backend.env.INIT_ADMIN_USERNAME }}（密码来自安装时设置的 secrets.initAdminPassword）
+登录账号：{{ .Values.backend.env.INIT_ADMIN_USERNAME }}
+
+{{- if and .Values.secrets.create (not .Values.secrets.existingSecret) }}
+
+{{- if .Values.secrets.autoGenerate }}
+
+密钥已自动生成并写入 Secret「{{ include "k8s-auto-scaler.secretName" . }}」。
+查看初始管理员密码：
+  kubectl get secret -n {{ .Release.Namespace }} {{ include "k8s-auto-scaler.secretName" . }} \
+    -o jsonpath='{.data.INIT_ADMIN_PASSWORD}' | base64 -d; echo
+
+备份 kubeconfig 加密密钥（丢失后无法解密已保存的集群配置）：
+  kubectl get secret -n {{ .Release.Namespace }} {{ include "k8s-auto-scaler.secretName" . }} \
+    -o jsonpath='{.data.KUBECONFIG_ENCRYPTION_KEY}' | base64 -d; echo
+
+{{- else }}
+
+管理员密码来自 values：secrets.initAdminPassword
+
+{{- end }}
+{{- end }}
 
 重要：
   - backend 固定为单副本（APScheduler 定时任务），请勿调高 backend.replicaCount
   - SQLite 数据保存在 PVC「{{ include "k8s-auto-scaler.backend.fullname" . }}」（若 persistence.enabled=true）
-  - 生产环境请确保已设置 JWT 与 KUBECONFIG 加密密钥
+  - 请勿删除 Secret「{{ include "k8s-auto-scaler.secretName" . }}」，否则无法解密已有 kubeconfig

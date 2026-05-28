@@ -52,9 +52,11 @@ frontend:
   tolerations: []
   affinity: {}
 
-# 敏感配置：生产环境建议使用 --set 或 external Secret，勿将明文提交到 Git
+# 敏感配置：默认自动生成并写入 Secret（upgrade 时保留已有值）
+# 若需自行指定，填写下列字段或设置 autoGenerate: false
 secrets:
   create: true
+  autoGenerate: true
   existingSecret: ""
   jwtSecretKey: ""
   kubeconfigEncryptionKey: ""

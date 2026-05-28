@@ -142,15 +142,12 @@ services:
 Chart 位于 [`charts/k8s-auto-scaler`](charts/k8s-auto-scaler/)，包含 backend（单副本 + PVC）、frontend（nginx 反代 API）及可选 Ingress。
 
 ```bash
-JWT_SECRET=$(openssl rand -hex 32)
-KUBE_KEY=$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
-
+# 默认自动生成 JWT / kubeconfig 加密密钥 / 初始 admin 密码并写入 Secret
 helm upgrade --install k8s-scaler ./charts/k8s-auto-scaler \
-  --namespace k8s-scaler --create-namespace \
-  --set secrets.jwtSecretKey="$JWT_SECRET" \
-  --set secrets.kubeconfigEncryptionKey="$KUBE_KEY" \
-  --set secrets.initAdminPassword='your-secure-password'
+  --namespace k8s-scaler --create-namespace
 ```
+
+安装后通过 `helm status` 的 NOTES 查看如何从 Secret 读取初始管理员密码。
 
 本地访问（ClusterIP 时）：
 
