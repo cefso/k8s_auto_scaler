@@ -840,8 +840,13 @@ def _pod_metrics_by_namespace_and_name(
     return metrics
 
 
-def _node_metrics_usage(api_client, allocatable_by_name: dict[str, dict]) -> dict[str, dict]:
-    """节点名 -> {cpu, cpu_percent, memory, memory_percent}。"""
+def _is_virtual_node(name: str) -> bool:
+    """名称包含 virtual 的节点视为虚拟节点，不参与集群资源总量汇总。"""
+    return "virtual" in name.lower()
+
+
+def _node_metrics_usage(api_client, capacity_by_name: dict[str, dict]) -> dict[str, dict]:
+    """节点名 -> {cpu, cpu_percent, memory, memory_percent}（使用率 = usage / capacity）。"""
     custom_api = client.CustomObjectsApi(api_client)
     try:
         result = custom_api.list_cluster_custom_object(
@@ -863,14 +868,14 @@ def _node_metrics_usage(api_client, allocatable_by_name: dict[str, dict]) -> dic
             continue
         cpu = _parse_cpu_value(str(usage.get("cpu", "0")))
         mem = _parse_resource_value(str(usage.get("memory", "0")))
-        alloc = allocatable_by_name.get(name, {})
-        cpu_alloc = alloc.get("cpu", 0) or 0
-        mem_alloc = alloc.get("memory", 0) or 0
+        cap = capacity_by_name.get(name, {})
+        cpu_cap = cap.get("cpu", 0) or 0
+        mem_cap = cap.get("memory", 0) or 0
         node_metrics[name] = {
             "cpu": cpu,
-            "cpu_percent": round(cpu / cpu_alloc * 100, 1) if cpu_alloc > 0 else 0.0,
+            "cpu_percent": round(cpu / cpu_cap * 100, 1) if cpu_cap > 0 else 0.0,
             "memory": mem,
-            "memory_percent": round(mem / mem_alloc * 100, 1) if mem_alloc > 0 else 0.0,
+            "memory_percent": round(mem / mem_cap * 100, 1) if mem_cap > 0 else 0.0,
         }
     return node_metrics
 
@@ -1339,13 +1344,13 @@ def get_node_metrics(api_client, kubeconfig_content: str = None) -> dict:
     """获取节点资源使用量
 
     返回:
-    - items: 节点列表，每项包含 name、ip、cpu_request、cpu_limit、cpu_usage、memory_request、memory_limit、memory_usage
+    - items: 节点列表，含 capacity/allocatable、usage 及基于 capacity 的使用率
     - metrics_available: 是否可用 metrics-server
     """
     v1 = client.CoreV1Api(api_client)
     items = []
     metrics_available = False
-    allocatable_by_name: dict[str, dict] = {}
+    capacity_by_name: dict[str, dict] = {}
 
     try:
         nodes = v1.list_node()
@@ -1358,9 +1363,13 @@ def get_node_metrics(api_client, kubeconfig_content: str = None) -> dict:
                         node_ip = addr.address
                         break
 
+            node_name = node.metadata.name
             item = {
-                "name": node.metadata.name,
+                "name": node_name,
                 "ip": node_ip,
+                "is_virtual": _is_virtual_node(node_name),
+                "cpu_capacity": 0,
+                "memory_capacity": 0,
                 "cpu_request": 0,
                 "cpu_limit": 0,
                 "cpu_usage": 0,
@@ -1368,28 +1377,37 @@ def get_node_metrics(api_client, kubeconfig_content: str = None) -> dict:
                 "memory_limit": 0,
                 "memory_usage": 0,
             }
-            # 获取节点 allocatable 资源
+            if node.status.capacity:
+                cpu_cap = node.status.capacity.get("cpu")
+                mem_cap = node.status.capacity.get("memory")
+                if cpu_cap:
+                    val = _parse_cpu_value(cpu_cap)
+                    item["cpu_capacity"] = val
+                if mem_cap:
+                    val = _parse_resource_value(mem_cap)
+                    item["memory_capacity"] = val
+            # allocatable 供表格展示可调度资源
             if node.status.allocatable:
-                cpu_alloc = node.status.allocatable.get('cpu')
-                mem_alloc = node.status.allocatable.get('memory')
+                cpu_alloc = node.status.allocatable.get("cpu")
+                mem_alloc = node.status.allocatable.get("memory")
                 if cpu_alloc:
                     val = _parse_cpu_value(cpu_alloc)
                     item["cpu_request"] = val
-                    item["cpu_limit"] = val  # allocatable 作为节点容量
+                    item["cpu_limit"] = val
                 if mem_alloc:
                     val = _parse_resource_value(mem_alloc)
                     item["memory_request"] = val
-                    item["memory_limit"] = val  # allocatable 作为节点容量
-            allocatable_by_name[item["name"]] = {
-                "cpu": item["cpu_limit"],
-                "memory": item["memory_limit"],
+                    item["memory_limit"] = val
+            capacity_by_name[node_name] = {
+                "cpu": item["cpu_capacity"],
+                "memory": item["memory_capacity"],
             }
             items.append(item)
     except Exception as e:
         logger.warning(f"获取节点列表失败: {e}")
 
     try:
-        node_metrics = _node_metrics_usage(api_client, allocatable_by_name)
+        node_metrics = _node_metrics_usage(api_client, capacity_by_name)
         if node_metrics:
             metrics_available = True
             for item in items:
