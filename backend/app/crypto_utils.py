@@ -19,16 +19,36 @@ logger = logging.getLogger(__name__)
 _fernet_key_cache: bytes | None = None
 
 
+def _parse_fernet_key(raw: str) -> bytes:
+    """解析 Fernet 密钥，兼容 Fernet.generate_key() 与 Helm 旧版标准 Base64。"""
+    raw = raw.strip()
+    if not raw:
+        raise ValueError("KUBECONFIG_ENCRYPTION_KEY 为空")
+
+    try:
+        Fernet(raw.encode())
+        return raw.encode()
+    except Exception:
+        pass
+
+    try:
+        decoded = base64.b64decode(raw, validate=True)
+        if len(decoded) != 32:
+            raise ValueError("decoded length is not 32")
+        normalized = base64.urlsafe_b64encode(decoded)
+        Fernet(normalized)
+        return normalized
+    except Exception as e:
+        raise ValueError(
+            "KUBECONFIG_ENCRYPTION_KEY 格式无效，请使用 Fernet.generate_key() 生成"
+        ) from e
+
+
 def validate_crypto_config() -> None:
     """启动时校验加密配置，生产环境禁止静默回退。"""
     raw = os.environ.get("KUBECONFIG_ENCRYPTION_KEY", "").strip()
     if raw:
-        try:
-            Fernet(raw.encode())
-        except Exception as e:
-            raise ValueError(
-                "KUBECONFIG_ENCRYPTION_KEY 格式无效，请使用 Fernet.generate_key() 生成"
-            ) from e
+        _parse_fernet_key(raw)
         return
 
     if not settings.DEBUG:
@@ -47,12 +67,8 @@ def _get_fernet_key() -> bytes:
 
     raw = os.environ.get("KUBECONFIG_ENCRYPTION_KEY", "").strip()
     if raw:
-        try:
-            Fernet(raw.encode())
-            _fernet_key_cache = raw.encode()
-            return _fernet_key_cache
-        except Exception as e:
-            raise ValueError("KUBECONFIG_ENCRYPTION_KEY 格式无效") from e
+        _fernet_key_cache = _parse_fernet_key(raw)
+        return _fernet_key_cache
 
     if not settings.DEBUG:
         raise ValueError("生产环境必须设置 KUBECONFIG_ENCRYPTION_KEY")
