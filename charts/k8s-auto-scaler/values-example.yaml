@@ -1,11 +1,14 @@
-# 示例 values（复制后填写 secrets，勿提交明文到 Git）
+# 示例 values（复制后按需修改，勿提交明文到 Git）
 # helm upgrade --install k8s-scaler ./charts/k8s-auto-scaler -f values-example.yaml
 
+# 默认 true：未填写的 secrets.* 由 Chart 首次安装时自动生成
 secrets:
-  create: true
-  jwtSecretKey: ""              # openssl rand -hex 32
-  kubeconfigEncryptionKey: ""   # Fernet.generate_key()
-  initAdminPassword: ""
+  autoGenerate: true
+  # 若需自行指定，可关闭自动生成并填写：
+  # autoGenerate: false
+  # jwtSecretKey: ""
+  # kubeconfigEncryptionKey: ""
+  # initAdminPassword: ""
 
 ingress:
   enabled: true

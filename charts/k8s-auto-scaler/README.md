@@ -11,29 +11,31 @@
 
 ## 快速安装
 
-```bash
-# 生成密钥
-JWT_SECRET=$(openssl rand -hex 32)
-KUBE_KEY=$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
-ADMIN_PASS='your-secure-password'
+默认 `secrets.autoGenerate=true`：首次安装时自动生成 JWT、Fernet kubeconfig 加密密钥与初始 admin 密码，并写入 Kubernetes Secret；`helm upgrade` 会通过集群内 `lookup` 保留已有 Secret，不会轮换密钥。
 
+```bash
 helm upgrade --install k8s-scaler ./charts/k8s-auto-scaler \
-  --namespace k8s-scaler --create-namespace \
-  --set secrets.jwtSecretKey="$JWT_SECRET" \
-  --set secrets.kubeconfigEncryptionKey="$KUBE_KEY" \
-  --set secrets.initAdminPassword="$ADMIN_PASS"
+  --namespace k8s-scaler --create-namespace
 ```
 
-安装后按 `helm status` 输出的 NOTES 访问（默认需 `kubectl port-forward`）。
+安装后执行 `helm status` 查看 NOTES（含从 Secret 读取初始密码的命令），默认需 `kubectl port-forward` 访问。
+
+### 手动指定密钥（可选）
+
+```bash
+helm upgrade --install k8s-scaler ./charts/k8s-auto-scaler \
+  --namespace k8s-scaler --create-namespace \
+  --set secrets.autoGenerate=false \
+  --set secrets.jwtSecretKey="$(openssl rand -hex 32)" \
+  --set secrets.kubeconfigEncryptionKey="$(python3 -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')" \
+  --set secrets.initAdminPassword='your-secure-password'
+```
 
 ## 使用 Ingress
 
 ```bash
 helm upgrade --install k8s-scaler ./charts/k8s-auto-scaler \
   --namespace k8s-scaler --create-namespace \
-  --set secrets.jwtSecretKey="$JWT_SECRET" \
-  --set secrets.kubeconfigEncryptionKey="$KUBE_KEY" \
-  --set secrets.initAdminPassword="$ADMIN_PASS" \
   --set ingress.enabled=true \
   --set ingress.className=nginx \
   --set ingress.hosts[0].host=scaler.example.com \
@@ -63,7 +65,8 @@ helm upgrade --install k8s-scaler ./charts/k8s-auto-scaler \
 | `backend.image.repository` | 后端镜像 | `ghcr.io/cefso/k8s-scaler-backend` |
 | `backend.persistence.enabled` | 是否挂载 PVC 持久化 SQLite | `true` |
 | `frontend.image.repository` | 前端镜像 | `ghcr.io/cefso/k8s-scaler-frontend` |
-| `secrets.*` | JWT / kubeconfig 加密 / 初始 admin 密码 | 安装时必填 |
+| `secrets.autoGenerate` | 未填写 `secrets.*` 时自动生成并写入 Secret | `true` |
+| `secrets.*` | 手动覆盖 JWT / kubeconfig 加密 / 初始 admin 密码 | 空（走自动生成） |
 | `ingress.enabled` | 是否创建 Ingress | `false` |
 
 完整参数见 [values.yaml](./values.yaml)。
@@ -80,4 +83,6 @@ kubectl delete pvc -n k8s-scaler -l app.kubernetes.io/instance=k8s-scaler
 
 - **backend 必须单副本**：定时扩缩容使用进程内 APScheduler，多副本会导致任务重复执行。
 - **前端 nginx** 通过 ConfigMap 将 `/api` 代理到集群内 backend Service，无需单独暴露 backend。
+- **自动生成密钥**：请备份 Secret 中的 `KUBECONFIG_ENCRYPTION_KEY`；删除 Secret 或在不保留密钥的情况下重装会导致已入库 kubeconfig 无法解密。
+- `helm template` 离线渲染时每次会生成新随机值；以实际 `helm install/upgrade`（能访问集群 API）为准。
 - 私有 GHCR 镜像请配置 `imagePullSecrets`。
