@@ -21,7 +21,8 @@ FROM nginx:alpine
 # 复制构建产物
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# 复制 nginx 配置
+# 复制 nginx 配置（map 须在 http 上下文，单独文件）
+COPY nginx/00-upgrade-map.conf /etc/nginx/conf.d/00-upgrade-map.conf
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 5173

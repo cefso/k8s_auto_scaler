@@ -63,6 +63,8 @@ NodePort 访问（将 <node-ip> 替换为节点 IP）：
      helm upgrade {{ .Release.Name }} <chart> -n {{ .Release.Namespace }} --set secrets.forceRegenerate=true
      成功后可将 forceRegenerate 改回 false
 
+Pod 日志 WebSocket 若 404：请 helm upgrade 应用最新 Chart（nginx upgrade-map），并确认 backend 镜像含 logs WebSocket 修复；详见 Chart README「故障排查」。
+
 重要：
   - backend 固定为单副本（APScheduler 定时任务），请勿调高 backend.replicaCount
   - SQLite 数据保存在 PVC「{{ include "k8s-auto-scaler.backend.fullname" . }}」（若 persistence.enabled=true）

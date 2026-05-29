@@ -13,6 +13,10 @@ secrets:
 ingress:
   enabled: true
   className: nginx
+  # WebSocket 日志流经 Ingress 时需较长超时（与前端 nginx proxy_read_timeout 配合）
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
   hosts:
     - host: scaler.example.com
       paths:
