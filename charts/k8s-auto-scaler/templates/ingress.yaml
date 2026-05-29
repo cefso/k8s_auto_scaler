@@ -1,8 +1,5 @@
 {{- if .Values.ingress.enabled }}
-{{- $ingressAnn := .Values.ingress.annotations | default dict }}
-{{- if eq .Values.ingress.className "nginx" }}
-{{- $ingressAnn = merge (dict "nginx.ingress.kubernetes.io/proxy-read-timeout" "3600" "nginx.ingress.kubernetes.io/proxy-send-timeout" "3600") $ingressAnn }}
-{{- end }}
+{{- $ingressAnn := include "k8s-auto-scaler.ingress.annotations" . | fromYaml }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:

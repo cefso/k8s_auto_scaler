@@ -11,10 +11,16 @@ import queue
 import threading
 from typing import AsyncGenerator, Optional
 
-from kubernetes import client, watch
+from kubernetes import client
 from kubernetes.client.rest import ApiException
 
 logger = logging.getLogger(__name__)
+
+
+def _decode_log_line(line) -> str:
+    if isinstance(line, bytes):
+        return line.decode("utf-8", errors="replace").rstrip("\n")
+    return str(line).rstrip("\n")
 
 
 async def get_pod_logs(
@@ -105,20 +111,22 @@ async def stream_pod_logs(
 
         def watch_logs():
             try:
-                w = watch.Watch()
-                stream = w.stream(
-                    v1.read_namespaced_pod_log,
+                # read_namespaced_pod_log 使用 follow=True，不能用 watch.Watch().stream()
+                # （后者会注入 watch= 参数导致 TypeError）
+                stream = v1.read_namespaced_pod_log(
                     name=pod_name,
                     namespace=namespace,
                     container=container_name,
                     follow=True,
                     timestamps=True,
-                    pretty=True,
+                    _preload_content=False,
                 )
                 for line in stream:
                     if stop_event.is_set():
                         break
-                    log_queue.put(f"log:{line}")
+                    text = _decode_log_line(line)
+                    if text:
+                        log_queue.put(f"log:{text}")
             except ApiException as e:
                 if e.status != 304:
                     log_queue.put(f"error:日志流中断: {e.reason}")

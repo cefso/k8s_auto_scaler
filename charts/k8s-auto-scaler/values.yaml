@@ -68,6 +68,12 @@ ingress:
   enabled: false
   className: ""
   annotations: {}
+  # Pod 日志 WebSocket：按 className（nginx / apisix）自动合并 Ingress 注解
+  websocket:
+    enabled: true
+    # 留空则根据 className 推断；可显式设为 nginx 或 apisix
+    provider: ""
+    timeoutSeconds: 3600
   hosts:
     - host: k8s-scaler.local
       paths:

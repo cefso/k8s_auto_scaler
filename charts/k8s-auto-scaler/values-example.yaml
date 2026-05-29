@@ -12,11 +12,14 @@ secrets:
 
 ingress:
   enabled: true
-  className: nginx
-  # WebSocket 日志流经 Ingress 时需较长超时（与前端 nginx proxy_read_timeout 配合）
-  annotations:
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+  className: apisix
+  # ingress.websocket.enabled=true 时，按 className 自动添加 WebSocket 注解：
+  #   apisix → k8s.apisix.apache.org/enable-websocket + upstream 超时
+  #   nginx  → nginx.ingress.kubernetes.io/proxy-read/send-timeout
+  websocket:
+    enabled: true
+    # provider: apisix   # className 与控制器不一致时可显式指定
+    timeoutSeconds: 3600
   hosts:
     - host: scaler.example.com
       paths:
