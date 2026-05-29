@@ -158,3 +158,33 @@ Fernet 密钥：32 字节标准 Base64（cryptography.Fernet 可接受）；upgr
 http://localhost:5173
 {{- end -}}
 {{- end }}
+
+{{/*
+根据 ingress.websocket.provider 或 ingress.className 推断 Ingress 类型（nginx / apisix）
+*/}}
+{{- define "k8s-auto-scaler.ingress.websocketProvider" -}}
+{{- if .Values.ingress.websocket.provider -}}
+{{- .Values.ingress.websocket.provider -}}
+{{- else if eq .Values.ingress.className "nginx" -}}
+nginx
+{{- else if eq .Values.ingress.className "apisix" -}}
+apisix
+{{- end -}}
+{{- end }}
+
+{{/*
+合并用户 annotations 与 Pod 日志 WebSocket 所需的 Ingress 注解（用户自定义优先）
+*/}}
+{{- define "k8s-auto-scaler.ingress.annotations" -}}
+{{- $ann := .Values.ingress.annotations | default dict | deepCopy -}}
+{{- if and .Values.ingress.enabled (default true .Values.ingress.websocket.enabled) -}}
+{{- $provider := include "k8s-auto-scaler.ingress.websocketProvider" . -}}
+{{- $timeout := printf "%v" (default 3600 .Values.ingress.websocket.timeoutSeconds) -}}
+{{- if eq $provider "nginx" -}}
+{{- $ann = merge (dict "nginx.ingress.kubernetes.io/proxy-read-timeout" $timeout "nginx.ingress.kubernetes.io/proxy-send-timeout" $timeout) $ann -}}
+{{- else if eq $provider "apisix" -}}
+{{- $ann = merge (dict "k8s.apisix.apache.org/enable-websocket" "true" "k8s.apisix.apache.org/upstream-read-timeout" $timeout "k8s.apisix.apache.org/upstream-send-timeout" $timeout) $ann -}}
+{{- end -}}
+{{- end -}}
+{{- toYaml $ann -}}
+{{- end }}

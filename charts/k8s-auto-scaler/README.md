@@ -33,6 +33,19 @@ helm upgrade --install k8s-scaler ./charts/k8s-auto-scaler \
 
 ## 使用 Ingress
 
+APISIX 示例（`className: apisix` 时自动添加 `enable-websocket` 等注解）：
+
+```bash
+helm upgrade --install k8s-scaler ./charts/k8s-auto-scaler \
+  --namespace k8s-scaler --create-namespace \
+  --set ingress.enabled=true \
+  --set ingress.className=apisix \
+  --set ingress.hosts[0].host=scaler.example.com \
+  --set backend.env.CORS_ORIGINS=https://scaler.example.com
+```
+
+nginx Ingress 示例：
+
 ```bash
 helm upgrade --install k8s-scaler ./charts/k8s-auto-scaler \
   --namespace k8s-scaler --create-namespace \
@@ -68,6 +81,9 @@ helm upgrade --install k8s-scaler ./charts/k8s-auto-scaler \
 | `secrets.autoGenerate` | 未填写 `secrets.*` 时自动生成并写入 Secret | `true` |
 | `secrets.*` | 手动覆盖 JWT / kubeconfig 加密 / 初始 admin 密码 | 空（走自动生成） |
 | `ingress.enabled` | 是否创建 Ingress | `false` |
+| `ingress.websocket.enabled` | 是否按 Ingress 类型自动添加 WebSocket 注解 | `true` |
+| `ingress.websocket.provider` | 显式指定 `nginx` / `apisix`；留空则根据 `ingress.className` 推断 | `""` |
+| `ingress.websocket.timeoutSeconds` | WebSocket 代理读/写超时（秒） | `3600` |
 
 完整参数见 [values.yaml](./values.yaml)。
 
@@ -88,7 +104,7 @@ kubectl delete pvc -n k8s-scaler -l app.kubernetes.io/instance=k8s-scaler
 1. **前端 nginx 未正确转发 WebSocket 握手**（Helm 用 ConfigMap 覆盖镜像内配置）。旧配置会把 `Connection: upgrade` 写死，在 Ingress 剥掉 `Upgrade` 头后，后端会把请求当成普通 GET，对仅注册的 WebSocket 路由返回 404。请 `helm upgrade` 到包含 `00-upgrade-map.conf` 的 Chart 版本，前端 Pod 会随 `checksum/nginx-config` 自动滚动。
 2. **后端镜像过旧**：若 `ghcr.io/cefso/k8s-scaler-backend:latest` 早于 PR #7（`logs` 路由不再挂全局 Bearer 依赖），需重新构建并推送镜像，或本地指定 `backend.image` 为自建 tag。
 
-启用 Ingress 且 `className: nginx` 时，Chart 会为 Ingress 合并 `proxy-read-timeout` / `proxy-send-timeout`（见 `values-example.yaml`）。
+启用 Ingress 且 `ingress.websocket.enabled=true` 时，Chart 会按 `ingress.className`（或 `ingress.websocket.provider`）自动合并注解：`apisix` → `k8s.apisix.apache.org/enable-websocket`；`nginx` → `proxy-read/send-timeout`。APISIX 默认不转发 WebSocket，未加注解会导致日志 WS 404。
 
 ## 注意事项
 
